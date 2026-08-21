@@ -1,0 +1,522 @@
+syntax = "proto3";
+package muxcore.playback.monitor.v1;
+option go_package = "github.com/Muxcore-Media/playback-monitor/proto/monitorv1;monitorv1";
+
+service PlaybackMonitorService {
+  rpc IngestSessionEvent(IngestSessionEventRequest) returns (IngestSessionEventResponse);
+  rpc ListActiveSessions(ListActiveSessionsRequest) returns (ListActiveSessionsResponse);
+  rpc ListHistory(ListHistoryRequest) returns (ListHistoryResponse);
+  rpc GetHomeStats(GetHomeStatsRequest) returns (GetHomeStatsResponse);
+  rpc GetItemWatchStats(GetItemWatchStatsRequest) returns (GetItemWatchStatsResponse);
+  rpc ListWatchUsers(ListWatchUsersRequest) returns (ListWatchUsersResponse);
+  rpc GetStreamAnalytics(GetStreamAnalyticsRequest) returns (GetStreamAnalyticsResponse);
+  rpc ListUserWatchStats(ListUserWatchStatsRequest) returns (ListUserWatchStatsResponse);
+  rpc ListServers(ListServersRequest) returns (ListServersResponse);
+  rpc RegisterServer(RegisterServerRequest) returns (RegisterServerResponse);
+  rpc GetPlaysByDate(GetPlaysByDateRequest) returns (GetPlaysByDateResponse);
+  rpc GetPlaysByHour(GetPlaysByHourRequest) returns (GetPlaysByHourResponse);
+  rpc GetPlaysByDayOfWeek(GetPlaysByDayOfWeekRequest) returns (GetPlaysByDayOfWeekResponse);
+  rpc GetPlaysByMonth(GetPlaysByMonthRequest) returns (GetPlaysByMonthResponse);
+  rpc GetPlaysByStreamType(GetPlaysByStreamTypeRequest) returns (GetPlaysByStreamTypeResponse);
+  rpc GetPlaysByStreamResolution(GetPlaysByStreamResolutionRequest) returns (GetPlaysByStreamResolutionResponse);
+  rpc GetPlaysBySourceResolution(GetPlaysBySourceResolutionRequest) returns (GetPlaysBySourceResolutionResponse);
+  rpc GetPlaysByPlatformResolution(GetPlaysByPlatformResolutionRequest) returns (GetPlaysByPlatformResolutionResponse);
+  rpc GetPlaysByTopUsers(GetPlaysByTopUsersRequest) returns (GetPlaysByTopUsersResponse);
+  rpc GetPlaysByTopPlatforms(GetPlaysByTopPlatformsRequest) returns (GetPlaysByTopPlatformsResponse);
+  rpc GetConcurrentStreams(GetConcurrentStreamsRequest) returns (GetConcurrentStreamsResponse);
+  rpc MergeUserIdentity(MergeUserIdentityRequest) returns (MergeUserIdentityResponse);
+  rpc ImportTautulliHistory(ImportTautulliHistoryRequest) returns (ImportTautulliHistoryResponse);
+  rpc ImportJellystatHistory(ImportJellystatHistoryRequest) returns (ImportJellystatHistoryResponse);
+  rpc ListLibraryStats(ListLibraryStatsRequest) returns (ListLibraryStatsResponse);
+  rpc ListLibraryDuplicates(ListLibraryDuplicatesRequest) returns (ListLibraryDuplicatesResponse);
+  rpc ListStaleLibraryItems(ListStaleLibraryItemsRequest) returns (ListStaleLibraryItemsResponse);
+  rpc GetLibraryStorageSummary(GetLibraryStorageSummaryRequest) returns (GetLibraryStorageSummaryResponse);
+  rpc GetLibraryStorageHistory(GetLibraryStorageHistoryRequest) returns (GetLibraryStorageHistoryResponse);
+  rpc ListTopContent(ListTopContentRequest) returns (ListTopContentResponse);
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_PLAYING = 1;
+  SESSION_STATE_PAUSED = 2;
+  SESSION_STATE_STOPPED = 3;
+}
+
+message SessionEvent {
+  string event_type = 1; // playback.started | playback.progress | playback.stopped
+  string source_module = 2;
+  string server_id = 3;
+  string server_type = 4; // jellyfin | plex | emby | native
+  string external_session_id = 5;
+  string user_id = 6;
+  string user_name = 7;
+  string item_id = 8;
+  string muxcore_id = 9;
+  string title = 10;
+  string media_type = 11;
+  int64 position_seconds = 12;
+  int64 duration_seconds = 13;
+  bool is_paused = 14;
+  bool is_transcode = 15;
+  string platform = 16;
+  string device = 17;
+  string player = 18;
+  string ip_address = 19;
+  string media_path = 20;
+  int64 occurred_at_unix = 21;
+}
+
+message IngestSessionEventRequest {
+  SessionEvent event = 1;
+}
+
+message IngestSessionEventResponse {
+  string session_id = 1;
+  bool created = 2;
+}
+
+message SessionRecord {
+  string id = 1;
+  string server_id = 2;
+  string server_type = 3;
+  string external_session_id = 4;
+  SessionState state = 5;
+  string user_id = 6;
+  string user_name = 7;
+  string item_id = 8;
+  string muxcore_id = 9;
+  string title = 10;
+  string media_type = 11;
+  int64 started_at_unix = 12;
+  int64 stopped_at_unix = 13;
+  int64 last_progress_at_unix = 14;
+  int64 position_seconds = 15;
+  int64 duration_seconds = 16;
+  bool is_transcode = 17;
+  string platform = 18;
+  string device = 19;
+  string player = 20;
+  string ip_address = 21;
+  string source_module = 22;
+  string geo_country = 23;
+  string geo_city = 24;
+  double geo_lat = 25;
+  double geo_lon = 26;
+}
+
+message ListActiveSessionsRequest {
+  string server_id = 1;
+  int32 limit = 2;
+}
+
+message ListActiveSessionsResponse {
+  repeated SessionRecord sessions = 1;
+}
+
+message ListHistoryRequest {
+  string server_id = 1;
+  string user_id = 2;
+  string query = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListHistoryResponse {
+  repeated SessionRecord sessions = 1;
+  int32 total = 2;
+}
+
+message GetHomeStatsRequest {
+  int32 days = 1;
+}
+
+message HomeStat {
+  string key = 1;
+  string label = 2;
+  double value = 3;
+}
+
+message GetHomeStatsResponse {
+  repeated HomeStat stats = 1;
+}
+
+message GetItemWatchStatsRequest {
+  string item_id = 1;
+  int32 runtime_minutes = 2;
+}
+
+message GetItemWatchStatsResponse {
+  int32 view_count = 1;
+  int32 play_count = 2;
+  int32 unique_user_count = 3;
+  double total_duration_minutes = 4;
+  double longest_duration_minutes = 5;
+  bool has_activity = 6;
+  bool never_watched = 7;
+  int32 days_since_last_watch = 8;
+  int64 last_watched_at_unix = 9;
+  map<string, double> user_watched_percent = 10;
+  map<string, double> user_watched_duration_minutes = 11;
+}
+
+message ListWatchUsersRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message WatchUser {
+  string username = 1;
+}
+
+message ListWatchUsersResponse {
+  repeated WatchUser users = 1;
+}
+
+message GetStreamAnalyticsRequest {
+  int32 days = 1;
+}
+
+message BreakdownRow {
+  string key = 1;
+  string label = 2;
+  int32 count = 3;
+}
+
+message GetStreamAnalyticsResponse {
+  repeated BreakdownRow platforms = 1;
+  repeated BreakdownRow transcodes = 2;
+}
+
+message ListUserWatchStatsRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message UserWatchStat {
+  string username = 1;
+  int32 play_count = 2;
+  double watch_minutes = 3;
+}
+
+message ListUserWatchStatsResponse {
+  repeated UserWatchStat users = 1;
+}
+
+message ServerRecord {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string source_module = 4;
+  int32 active_sessions = 5;
+  int64 created_at_unix = 6;
+}
+
+message ListServersRequest {}
+
+message ListServersResponse {
+  repeated ServerRecord servers = 1;
+}
+
+message RegisterServerRequest {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string source_module = 4;
+}
+
+message RegisterServerResponse {
+  ServerRecord server = 1;
+}
+
+message PlaysByDateRow {
+  string date = 1;
+  int32 count = 2;
+}
+
+message PlaysByDateSeries {
+  string name = 1;
+  repeated int32 data = 2;
+}
+
+message GetPlaysByDateRequest {
+  int32 days = 1;
+  string user_id = 2;
+  bool grouping = 3;
+  string y_axis = 4;
+}
+
+message GetPlaysByDateResponse {
+  repeated PlaysByDateRow rows = 1;
+  repeated string categories = 2;
+  repeated PlaysByDateSeries series = 3;
+}
+
+message ChartBucketRow {
+  string key = 1;
+  string label = 2;
+  int32 count = 3;
+}
+
+message GetPlaysByHourRequest {
+  int32 days = 1;
+}
+
+message GetPlaysByHourResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByDayOfWeekRequest {
+  int32 days = 1;
+}
+
+message GetPlaysByDayOfWeekResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByMonthRequest {
+  int32 days = 1;
+}
+
+message GetPlaysByMonthResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByStreamTypeRequest {
+  int32 days = 1;
+}
+
+message GetPlaysByStreamTypeResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByStreamResolutionRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message GetPlaysByStreamResolutionResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysBySourceResolutionRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message GetPlaysBySourceResolutionResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByPlatformResolutionRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message GetPlaysByPlatformResolutionResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByTopUsersRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message GetPlaysByTopUsersResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message GetPlaysByTopPlatformsRequest {
+  int32 days = 1;
+  int32 limit = 2;
+}
+
+message GetPlaysByTopPlatformsResponse {
+  repeated ChartBucketRow rows = 1;
+}
+
+message ConcurrentStreamRow {
+  string date = 1;
+  int32 total = 2;
+  int32 direct = 3;
+  int32 transcode = 4;
+}
+
+message GetConcurrentStreamsRequest {
+  int32 days = 1;
+}
+
+message GetConcurrentStreamsResponse {
+  repeated ConcurrentStreamRow rows = 1;
+}
+
+message MergeUserIdentityRequest {
+  string source_user_id = 1;
+  string source_user_name = 2;
+  string target_user_id = 3;
+  string target_user_name = 4;
+}
+
+message MergeUserIdentityResponse {
+  int32 sessions_updated = 1;
+}
+
+message ImportTautulliHistoryRequest {
+  string server_id = 1;
+  string tautulli_url = 2;
+  string api_key = 3;
+  string records_json = 4;
+  int32 max_records = 5;
+  bool dry_run = 6;
+}
+
+message ImportTautulliHistoryResponse {
+  int32 imported = 1;
+  int32 skipped = 2;
+  int32 failed = 3;
+  int32 total_fetched = 4;
+  string error = 5;
+}
+
+message ImportJellystatHistoryRequest {
+  string server_id = 1;
+  string server_type = 2;
+  string backup_json = 3;
+  int32 max_records = 4;
+  bool dry_run = 5;
+}
+
+message ImportJellystatHistoryResponse {
+  int32 imported = 1;
+  int32 skipped = 2;
+  int32 failed = 3;
+  int32 total_fetched = 4;
+  string error = 5;
+}
+
+message LibraryStat {
+  string server_id = 1;
+  string library_name = 2;
+  int32 play_count = 3;
+  double watch_minutes = 4;
+}
+
+message ListLibraryStatsRequest {
+  int32 days = 1;
+  string server_id = 2;
+  int32 limit = 3;
+}
+
+message ListLibraryStatsResponse {
+  repeated LibraryStat libraries = 1;
+}
+
+message LibraryDuplicateCopy {
+  string server_id = 1;
+  string item_id = 2;
+  string title = 3;
+  string library_name = 4;
+  string media_path = 5;
+  int64 file_size_bytes = 6;
+}
+
+message LibraryDuplicateGroup {
+  string group_key = 1;
+  string title = 2;
+  int32 copy_count = 3;
+  repeated LibraryDuplicateCopy copies = 4;
+}
+
+message ListLibraryDuplicatesRequest {
+  string server_id = 1;
+  int32 limit = 2;
+}
+
+message ListLibraryDuplicatesResponse {
+  repeated LibraryDuplicateGroup groups = 1;
+}
+
+message StaleLibraryItem {
+  string server_id = 1;
+  string item_id = 2;
+  string title = 3;
+  string media_type = 4;
+  string library_name = 5;
+  int64 file_size_bytes = 6;
+  string last_watched = 7;
+  int32 watch_count = 8;
+  string category = 9;
+  int32 days_stale = 10;
+}
+
+message ListStaleLibraryItemsRequest {
+  string server_id = 1;
+  int32 stale_days = 2;
+  int32 limit = 3;
+}
+
+message ListStaleLibraryItemsResponse {
+  repeated StaleLibraryItem items = 1;
+  int32 never_watched_count = 2;
+  int32 stale_count = 3;
+}
+
+message LibraryStorageRow {
+  string server_id = 1;
+  string library_name = 2;
+  int32 item_count = 3;
+  int64 total_bytes = 4;
+}
+
+message GetLibraryStorageSummaryRequest {
+  string server_id = 1;
+}
+
+message GetLibraryStorageSummaryResponse {
+  int32 total_items = 1;
+  int64 total_bytes = 2;
+  int64 duplicate_waste_bytes = 3;
+  repeated LibraryStorageRow libraries = 4;
+}
+
+message LibraryStorageHistoryPoint {
+  string day = 1;
+  int64 total_bytes = 2;
+  int32 item_count = 3;
+}
+
+message LibraryStoragePrediction {
+  double growth_bytes_per_day = 1;
+  int64 projected_bytes = 2;
+  int32 horizon_days = 3;
+}
+
+message GetLibraryStorageHistoryRequest {
+  string server_id = 1;
+  int32 days = 2;
+  int32 predict_days = 3;
+  string library_name = 4;
+}
+
+message GetLibraryStorageHistoryResponse {
+  repeated LibraryStorageHistoryPoint history = 1;
+  LibraryStoragePrediction prediction = 2;
+}
+
+message TopContentRow {
+  string title = 1;
+  string media_type = 2;
+  int32 play_count = 3;
+  double watch_minutes = 4;
+}
+
+message ListTopContentRequest {
+  int32 days = 1;
+  string server_id = 2;
+  int32 limit = 3;
+}
+
+message ListTopContentResponse {
+  repeated TopContentRow movies = 1;
+  repeated TopContentRow shows = 2;
+  repeated TopContentRow other = 3;
+}
