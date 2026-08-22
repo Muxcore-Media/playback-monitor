@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	"github.com/google/uuid"
 )
 
@@ -115,22 +116,22 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 	m.fillSessionExternalIDs(ctx, db, serverID, &ev)
 
 	switch strings.ToLower(ev.EventType) {
-	case "playback.started":
+	case playbackevents.EventPlaybackStarted:
 		id, created, err := m.startSession(ctx, db, ev, serverID, serverType, externalID, nowStr)
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
 			if created {
-				go m.firePlaybackNotificationRules(context.Background(), "playback.started", ev)
+				go m.firePlaybackNotificationRules(context.Background(), playbackevents.EventPlaybackStarted, ev)
 			}
 		}
 		return id, created, err
-	case "playback.progress":
+	case playbackevents.EventPlaybackProgress:
 		id, created, err := m.progressSession(ctx, db, ev, serverID, externalID, nowStr)
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
 		}
 		return id, created, err
-	case "playback.stopped":
+	case playbackevents.EventPlaybackStopped:
 		id, created, err := m.stopSession(ctx, db, ev, serverID, externalID, nowStr)
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)

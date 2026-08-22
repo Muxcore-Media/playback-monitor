@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
 )
 
@@ -134,7 +135,7 @@ func jellystatRecordToSessionEvent(rec map[string]any, serverID, serverType stri
 	userID := coerceString(rec["UserId"])
 
 	ev = SessionEvent{
-		EventType:         "playback.stopped",
+		EventType:         playbackevents.EventPlaybackStopped,
 		SourceModule:      "jellystat-import",
 		ServerID:          serverID,
 		ServerType:        serverType,

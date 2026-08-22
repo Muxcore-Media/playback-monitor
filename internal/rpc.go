@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
 )
 
@@ -548,11 +549,11 @@ func sessionEventFromPlaybackJSON(sourceModule string, payload []byte) (SessionE
 	if s, ok := raw["notification_type"].(string); ok && ev.EventType == "" {
 		switch strings.ToLower(s) {
 		case "playbackstart":
-			ev.EventType = "playback.started"
+			ev.EventType = playbackevents.EventPlaybackStarted
 		case "playbackprogress":
-			ev.EventType = "playback.progress"
+			ev.EventType = playbackevents.EventPlaybackProgress
 		case "playbackstop":
-			ev.EventType = "playback.stopped"
+			ev.EventType = playbackevents.EventPlaybackStopped
 		}
 	}
 	ev.ExternalSessionID = firstNonEmpty(

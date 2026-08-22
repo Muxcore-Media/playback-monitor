@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	"github.com/google/uuid"
 )
 
@@ -53,7 +54,7 @@ func (m *Module) seedDefaultNotificationRules(ctx context.Context) error {
 			ID:              uuid.NewString(),
 			Name:            "Session start (default)",
 			Enabled:         true,
-			EventType:       "playback.started",
+			EventType:       playbackevents.EventPlaybackStarted,
 			TitleTemplate:   "Playback started",
 			MessageTemplate: "{user} started watching \"{title}\"",
 			Severity:        "info",
@@ -66,7 +67,7 @@ func (m *Module) seedDefaultNotificationRules(ctx context.Context) error {
 			ID:              uuid.NewString(),
 			Name:            "Session stop (default)",
 			Enabled:         true,
-			EventType:       "playback.stopped",
+			EventType:       playbackevents.EventPlaybackStopped,
 			TitleTemplate:   "Playback stopped",
 			MessageTemplate: "{user} finished watching \"{title}\" ({position} watched)",
 			Severity:        "info",
@@ -235,7 +236,7 @@ func (m *Module) deleteNotificationRule(ctx context.Context, id string) error {
 
 func isAllowedNotificationEventType(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case "playback.started", "playback.stopped", "guard.violation":
+	case playbackevents.EventPlaybackStarted, playbackevents.EventPlaybackStopped, "guard.violation":
 		return true
 	default:
 		return false
@@ -398,11 +399,11 @@ func renderNotificationTemplate(tmpl string, vars map[string]string) string {
 
 func (m *Module) fireLegacyPlaybackNotification(ctx context.Context, eventType string, ev SessionEvent) {
 	switch eventType {
-	case "playback.started":
+	case playbackevents.EventPlaybackStarted:
 		if m.getNotifyOnSessionStart() {
 			m.notifySessionStartLegacy(ctx, ev)
 		}
-	case "playback.stopped":
+	case playbackevents.EventPlaybackStopped:
 		if m.getNotifyOnSessionStop() {
 			m.notifySessionStopLegacy(ctx, ev)
 		}

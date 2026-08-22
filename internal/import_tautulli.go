@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	"github.com/google/uuid"
 
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
@@ -172,7 +173,7 @@ func tautulliRecordToSessionEvent(rec map[string]any, serverID string) (external
 	}
 
 	ev = SessionEvent{
-		EventType:         "playback.stopped",
+		EventType:         playbackevents.EventPlaybackStopped,
 		SourceModule:      "tautulli-import",
 		ServerID:          serverID,
 		ServerType:        "plex",

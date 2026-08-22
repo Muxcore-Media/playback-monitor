@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
+	notificationv1 "github.com/Muxcore-Media/contracts-notification/muxcore/notification/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	notificationv1 "github.com/Muxcore-Media/contracts-notification/muxcore/notification/v1"
 )
 
 func (m *Module) findCapabilityAddr(ctx context.Context, capability string) (string, error) {
@@ -64,7 +64,7 @@ func (m *Module) notifySessionStartLegacy(ctx context.Context, ev SessionEvent) 
 	}
 	msg := fmt.Sprintf("%s started watching %q", user, title)
 	m.postNotification(ctx, "Playback started", msg, "info", map[string]string{
-		"event":      "playback.started",
+		"event":      playbackevents.EventPlaybackStarted,
 		"user":       user,
 		"title":      title,
 		"session_id": ev.ExternalSessionID,
@@ -83,7 +83,7 @@ func (m *Module) notifySessionStopLegacy(ctx context.Context, ev SessionEvent) {
 	}
 	msg := fmt.Sprintf("%s finished watching %q (%s watched)", user, title, formatMinutes(ev.PositionSeconds))
 	m.postNotification(ctx, "Playback stopped", msg, "info", map[string]string{
-		"event":            "playback.stopped",
+		"event":            playbackevents.EventPlaybackStopped,
 		"user":             user,
 		"title":            title,
 		"session_id":       ev.ExternalSessionID,
@@ -92,11 +92,11 @@ func (m *Module) notifySessionStopLegacy(ctx context.Context, ev SessionEvent) {
 }
 
 func (m *Module) notifySessionStart(ctx context.Context, ev SessionEvent) {
-	m.firePlaybackNotificationRules(ctx, "playback.started", ev)
+	m.firePlaybackNotificationRules(ctx, playbackevents.EventPlaybackStarted, ev)
 }
 
 func (m *Module) notifySessionStop(ctx context.Context, ev SessionEvent) {
-	m.firePlaybackNotificationRules(ctx, "playback.stopped", ev)
+	m.firePlaybackNotificationRules(ctx, playbackevents.EventPlaybackStopped, ev)
 }
 
 func (m *Module) postNotification(ctx context.Context, title, message, severity string, fields map[string]string) {
