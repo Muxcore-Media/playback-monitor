@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -67,7 +66,7 @@ func lookupPlexGeoIP(ctx context.Context, ip string) geoLocation {
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	url := "https://plex.tv/api/v2/geoip?ip_address=" + strings.ReplaceAll(ip, " ", "%20")
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return geoLocation{}
 	}
@@ -162,11 +161,4 @@ func envGeoIPEnabled(v string) bool {
 	default:
 		return false
 	}
-}
-
-func (m *Module) geoStatus() string {
-	if !m.geoIPEnabled {
-		return "disabled"
-	}
-	return fmt.Sprintf("plex (%d cached)", len(geoCache))
 }

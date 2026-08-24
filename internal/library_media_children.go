@@ -52,7 +52,7 @@ func (m *Module) listMediaChildren(ctx context.Context, rec *resolvedMedia) ([]m
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mediaChildRow, 0)
 	for rows.Next() {
 		var row mediaChildRow

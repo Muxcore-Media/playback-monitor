@@ -20,14 +20,14 @@ import (
 var destinationHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 type NotificationDestination struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Config    map[string]string
 	ID        string
 	Name      string
 	Type      string
-	Enabled   bool
-	Config    map[string]string
 	Events    []string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Enabled   bool
 }
 
 func isAllowedDestinationType(t string) bool {
@@ -53,7 +53,7 @@ func (m *Module) listNotificationDestinations(ctx context.Context) ([]Notificati
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanNotificationDestinations(rows)
 }
 
@@ -213,7 +213,7 @@ func (m *Module) removeDestinationFromRulesTx(ctx context.Context, tx *sql.Tx, d
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type row struct {
 		id  string
 		ids string
@@ -423,7 +423,7 @@ func (m *Module) postAppriseURLs(ctx context.Context, urls, title, message, seve
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/notify", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/notify", bytes.NewReader(payload)) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
 	}
@@ -433,11 +433,11 @@ func (m *Module) postAppriseURLs(ctx context.Context, urls, title, message, seve
 	} else if token := strings.TrimSpace(os.Getenv("APPRISE_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := destinationHTTPClient.Do(req)
+	resp, err := destinationHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("apprise returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
@@ -467,11 +467,11 @@ func (m *Module) postWebhookJSON(ctx context.Context, webhookURL string, payload
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := destinationHTTPClient.Do(req)
+	resp, err := destinationHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("webhook returned %s: %s", resp.Status, strings.TrimSpace(string(b)))

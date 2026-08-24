@@ -36,7 +36,7 @@ func (m *Module) serverNamesByID(ctx context.Context) map[string]string {
 	if err != nil {
 		return map[string]string{}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]string{}
 	for rows.Next() {
 		var id, name string
@@ -50,29 +50,32 @@ func (m *Module) serverNamesByID(ctx context.Context) map[string]string {
 
 func (m *Module) buildStreamSummary(ctx context.Context, rows []SessionRecord) map[string]any {
 	names := m.serverNamesByID(ctx)
+	transcodes := 0
+	directStreams := 0
+	directPlays := 0
 	summary := map[string]any{
 		"total":          len(rows),
-		"transcodes":     0,
-		"direct_streams": 0,
-		"direct_plays":   0,
+		"transcodes":     transcodes,
+		"direct_streams": directStreams,
+		"direct_plays":   directPlays,
 		"by_server":      []map[string]any{},
 	}
 	type serverAgg struct {
-		total          int
-		transcodes     int
-		directStreams  int
-		directPlays    int
+		total         int
+		transcodes    int
+		directStreams int
+		directPlays   int
 	}
 	byServer := map[string]*serverAgg{}
 	for _, rec := range rows {
 		cat := categorizeSession(rec)
 		switch cat {
 		case streamCategoryTranscode:
-			summary["transcodes"] = summary["transcodes"].(int) + 1
+			transcodes++
 		case streamCategoryDirectStream:
-			summary["direct_streams"] = summary["direct_streams"].(int) + 1
+			directStreams++
 		default:
-			summary["direct_plays"] = summary["direct_plays"].(int) + 1
+			directPlays++
 		}
 		agg := byServer[rec.ServerID]
 		if agg == nil {
@@ -89,6 +92,9 @@ func (m *Module) buildStreamSummary(ctx context.Context, rows []SessionRecord) m
 			agg.directPlays++
 		}
 	}
+	summary["transcodes"] = transcodes
+	summary["direct_streams"] = directStreams
+	summary["direct_plays"] = directPlays
 	serverRows := make([]map[string]any, 0, len(byServer))
 	for serverID, agg := range byServer {
 		serverRows = append(serverRows, map[string]any{

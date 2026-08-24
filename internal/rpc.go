@@ -41,7 +41,7 @@ func (m *Module) ListHistory(ctx context.Context, req *monitorv1.ListHistoryRequ
 	for _, r := range rows {
 		out = append(out, sessionRecordToProto(r))
 	}
-	return &monitorv1.ListHistoryResponse{Sessions: out, Total: int32(total)}, nil
+	return &monitorv1.ListHistoryResponse{Sessions: out, Total: int32(total)}, nil //nolint:gosec // history totals are bounded by query limits
 }
 
 func (m *Module) GetHomeStats(ctx context.Context, req *monitorv1.GetHomeStatsRequest) (*monitorv1.GetHomeStatsResponse, error) {
@@ -62,16 +62,16 @@ func (m *Module) GetItemWatchStats(ctx context.Context, req *monitorv1.GetItemWa
 		return nil, err
 	}
 	return &monitorv1.GetItemWatchStatsResponse{
-		ViewCount:                 int32(ws.ViewCount),
-		PlayCount:                 int32(ws.PlayCount),
-		UniqueUserCount:           int32(ws.UniqueUsers),
-		TotalDurationMinutes:      ws.TotalDurationMinutes,
-		LongestDurationMinutes:    ws.LongestDurationMinutes,
-		HasActivity:               ws.HasActivity,
-		NeverWatched:              ws.NeverWatched,
-		DaysSinceLastWatch:        int32(ws.DaysSinceLastWatch),
-		LastWatchedAtUnix:         ws.LastWatchedAt.Unix(),
-		UserWatchedPercent:        ws.UserWatchedPercent,
+		ViewCount:                  int32(ws.ViewCount),   //nolint:gosec // watch stats fit proto int32 fields
+		PlayCount:                  int32(ws.PlayCount),   //nolint:gosec // watch stats fit proto int32 fields
+		UniqueUserCount:            int32(ws.UniqueUsers), //nolint:gosec // watch stats fit proto int32 fields
+		TotalDurationMinutes:       ws.TotalDurationMinutes,
+		LongestDurationMinutes:     ws.LongestDurationMinutes,
+		HasActivity:                ws.HasActivity,
+		NeverWatched:               ws.NeverWatched,
+		DaysSinceLastWatch:         int32(ws.DaysSinceLastWatch), //nolint:gosec // watch stats fit proto int32 fields
+		LastWatchedAtUnix:          ws.LastWatchedAt.Unix(),
+		UserWatchedPercent:         ws.UserWatchedPercent,
 		UserWatchedDurationMinutes: ws.UserDurationMinutes,
 	}, nil
 }
@@ -95,10 +95,10 @@ func (m *Module) GetStreamAnalytics(ctx context.Context, req *monitorv1.GetStrea
 	}
 	resp := &monitorv1.GetStreamAnalyticsResponse{}
 	for _, row := range platforms {
-		resp.Platforms = append(resp.Platforms, &monitorv1.BreakdownRow{Key: row.Key, Label: row.Label, Count: int32(row.Count)})
+		resp.Platforms = append(resp.Platforms, &monitorv1.BreakdownRow{Key: row.Key, Label: row.Label, Count: int32(row.Count)}) //nolint:gosec // breakdown counts fit proto int32 fields
 	}
 	for _, row := range transcodes {
-		resp.Transcodes = append(resp.Transcodes, &monitorv1.BreakdownRow{Key: row.Key, Label: row.Label, Count: int32(row.Count)})
+		resp.Transcodes = append(resp.Transcodes, &monitorv1.BreakdownRow{Key: row.Key, Label: row.Label, Count: int32(row.Count)}) //nolint:gosec // breakdown counts fit proto int32 fields
 	}
 	return resp, nil
 }
@@ -112,7 +112,7 @@ func (m *Module) ListUserWatchStats(ctx context.Context, req *monitorv1.ListUser
 	for _, u := range users {
 		out = append(out, &monitorv1.UserWatchStat{
 			Username:     u.Username,
-			PlayCount:    int32(u.PlayCount),
+			PlayCount:    int32(u.PlayCount), //nolint:gosec // watch stats fit proto int32 fields
 			WatchMinutes: u.WatchMinutes,
 		})
 	}
@@ -131,7 +131,7 @@ func (m *Module) ListServers(ctx context.Context, _ *monitorv1.ListServersReques
 			Name:           s.Name,
 			Type:           s.Type,
 			SourceModule:   s.SourceModule,
-			ActiveSessions: int32(s.ActiveSessions),
+			ActiveSessions: int32(s.ActiveSessions), //nolint:gosec // active session counts fit proto int32 fields
 			CreatedAtUnix:  s.CreatedAt.Unix(),
 		})
 	}
@@ -149,7 +149,7 @@ func (m *Module) RegisterServer(ctx context.Context, req *monitorv1.RegisterServ
 			Name:           rec.Name,
 			Type:           rec.Type,
 			SourceModule:   rec.SourceModule,
-			ActiveSessions: int32(rec.ActiveSessions),
+			ActiveSessions: int32(rec.ActiveSessions), //nolint:gosec // active session counts fit proto int32 fields
 			CreatedAtUnix:  rec.CreatedAt.Unix(),
 		},
 	}, nil
@@ -161,14 +161,14 @@ func (m *Module) GetPlaysByDate(ctx context.Context, req *monitorv1.GetPlaysByDa
 		return nil, err
 	}
 	if req.GetGrouping() || len(userIDs) > 0 || strings.EqualFold(req.GetYAxis(), "duration") {
-		chart, err := m.playsByDateChart(ctx, playsByDateChartOpts{
+		chart, chartErr := m.playsByDateChart(ctx, playsByDateChartOpts{
 			Days:     int(req.GetDays()),
 			UserIDs:  userIDs,
 			Grouping: req.GetGrouping(),
 			YAxis:    req.GetYAxis(),
 		})
-		if err != nil {
-			return nil, err
+		if chartErr != nil {
+			return nil, chartErr
 		}
 		return playsByDateChartToProto(chart), nil
 	}
@@ -178,7 +178,7 @@ func (m *Module) GetPlaysByDate(ctx context.Context, req *monitorv1.GetPlaysByDa
 	}
 	out := make([]*monitorv1.PlaysByDateRow, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, &monitorv1.PlaysByDateRow{Date: row.Date, Count: int32(row.Count)})
+		out = append(out, &monitorv1.PlaysByDateRow{Date: row.Date, Count: int32(row.Count)}) //nolint:gosec // chart counts fit proto int32 fields
 	}
 	return &monitorv1.GetPlaysByDateResponse{Rows: out}, nil
 }
@@ -188,7 +188,7 @@ func playsByDateChartToProto(chart playsByDateChart) *monitorv1.GetPlaysByDateRe
 	for _, s := range chart.Series {
 		data := make([]int32, len(s.Data))
 		for i, v := range s.Data {
-			data[i] = int32(v)
+			data[i] = int32(v) //nolint:gosec // chart counts fit proto int32 fields
 		}
 		out.Series = append(out.Series, &monitorv1.PlaysByDateSeries{Name: s.Name, Data: data})
 	}
@@ -387,10 +387,10 @@ func (m *Module) GetLibraryStorageSummary(ctx context.Context, req *monitorv1.Ge
 		})
 	}
 	return &monitorv1.GetLibraryStorageSummaryResponse{
-		TotalItems:           int32(summary.TotalItems),
-		TotalBytes:           summary.TotalBytes,
-		DuplicateWasteBytes:  summary.DuplicateWaste,
-		Libraries:            libraries,
+		TotalItems:          int32(summary.TotalItems),
+		TotalBytes:          summary.TotalBytes,
+		DuplicateWasteBytes: summary.DuplicateWaste,
+		Libraries:           libraries,
 	}, nil
 }
 
@@ -482,32 +482,32 @@ func sessionEventFromProto(ev *monitorv1.SessionEvent) SessionEvent {
 
 func sessionRecordToProto(r SessionRecord) *monitorv1.SessionRecord {
 	return &monitorv1.SessionRecord{
-		Id:                r.ID,
-		ServerId:          r.ServerID,
-		ServerType:        r.ServerType,
-		ExternalSessionId: r.ExternalSessionID,
-		State:             sessionStateToProto(r.State),
-		UserId:            r.UserID,
-		UserName:          r.UserName,
-		ItemId:            r.ItemID,
-		MuxcoreId:         r.MuxcoreID,
-		Title:             r.Title,
-		MediaType:         r.MediaType,
-		StartedAtUnix:     r.StartedAt.Unix(),
-		StoppedAtUnix:     r.StoppedAt.Unix(),
+		Id:                 r.ID,
+		ServerId:           r.ServerID,
+		ServerType:         r.ServerType,
+		ExternalSessionId:  r.ExternalSessionID,
+		State:              sessionStateToProto(r.State),
+		UserId:             r.UserID,
+		UserName:           r.UserName,
+		ItemId:             r.ItemID,
+		MuxcoreId:          r.MuxcoreID,
+		Title:              r.Title,
+		MediaType:          r.MediaType,
+		StartedAtUnix:      r.StartedAt.Unix(),
+		StoppedAtUnix:      r.StoppedAt.Unix(),
 		LastProgressAtUnix: r.LastProgressAt.Unix(),
-		PositionSeconds:   int64(r.PositionSeconds),
-		DurationSeconds:   int64(r.DurationSeconds),
-		IsTranscode:       r.IsTranscode,
-		Platform:          r.Platform,
-		Device:            r.Device,
-		Player:            r.Player,
-		IpAddress:         r.IPAddress,
-		SourceModule:      r.SourceModule,
-		GeoCountry:        r.GeoCountry,
-		GeoCity:           r.GeoCity,
-		GeoLat:            r.GeoLat,
-		GeoLon:            r.GeoLon,
+		PositionSeconds:    int64(r.PositionSeconds),
+		DurationSeconds:    int64(r.DurationSeconds),
+		IsTranscode:        r.IsTranscode,
+		Platform:           r.Platform,
+		Device:             r.Device,
+		Player:             r.Player,
+		IpAddress:          r.IPAddress,
+		SourceModule:       r.SourceModule,
+		GeoCountry:         r.GeoCountry,
+		GeoCity:            r.GeoCity,
+		GeoLat:             r.GeoLat,
+		GeoLon:             r.GeoLon,
 	}
 }
 

@@ -62,11 +62,11 @@ func (m *Module) mergeUserIdentities(ctx context.Context, sourceID, sourceName, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := m.txExec(ctx, tx, `
+	if _, txErr := m.txExec(ctx, tx, `
 		UPDATE server_users SET identity_id = ?, user_name = COALESCE(NULLIF(?, ''), user_name)
 		WHERE identity_id = ?`, targetIdentity, targetName, sourceIdentity,
-	); err != nil {
-		return 0, err
+	); txErr != nil {
+		return 0, txErr
 	}
 
 	res, err := m.txExec(ctx, tx, `
@@ -92,7 +92,7 @@ func (m *Module) mergeUserIdentities(ctx context.Context, sourceID, sourceName, 
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	return int32(n), nil
+	return int32(n), nil //nolint:gosec // merged session count fits proto int32 field
 }
 
 func (m *Module) lookupIdentityForUser(ctx context.Context, db *sql.DB, userID, userName string) (string, error) {

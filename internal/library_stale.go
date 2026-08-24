@@ -10,15 +10,15 @@ import (
 )
 
 type staleLibraryItem struct {
+	LastWatched   *time.Time
 	ServerID      string
 	ItemID        string
 	Title         string
 	MediaType     string
 	LibraryName   string
-	FileSizeBytes int64
-	LastWatched   *time.Time
-	WatchCount    int
 	Category      string
+	FileSizeBytes int64
+	WatchCount    int
 	DaysStale     int
 }
 
@@ -61,7 +61,7 @@ func (m *Module) listStaleLibraryItems(ctx context.Context, serverID string, sta
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	now := time.Now().UTC()
 	out := make([]staleLibraryItem, 0)

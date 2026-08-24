@@ -32,7 +32,7 @@ func (m *Module) playsBySourceResolution(ctx context.Context, days, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanChartBucketRows(rows)
 }
 
@@ -63,7 +63,7 @@ func (m *Module) playsByPlatformResolution(ctx context.Context, days, limit int)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]chartBucketRow, 0)
 	for rows.Next() {
 		var platform, resolution string

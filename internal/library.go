@@ -9,10 +9,10 @@ import (
 )
 
 type libraryStatRow struct {
-	ServerID      string
-	LibraryName   string
-	PlayCount     int
-	WatchMinutes  float64
+	ServerID     string
+	LibraryName  string
+	PlayCount    int
+	WatchMinutes float64
 }
 
 type topContentRow struct {
@@ -100,7 +100,7 @@ func (m *Module) listLibraryStats(ctx context.Context, days int, serverID string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]libraryStatRow, 0)
 	for rows.Next() {
 		var row libraryStatRow
@@ -149,7 +149,7 @@ func (m *Module) listTopContent(ctx context.Context, days int, serverID string, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	movies = make([]topContentRow, 0)
 	shows = make([]topContentRow, 0)

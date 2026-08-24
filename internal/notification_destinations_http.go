@@ -3,6 +3,7 @@ package internal
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -35,7 +36,7 @@ func (m *Module) handleUpsertNotificationDestination(w http.ResponseWriter, r *h
 		Config  map[string]string `json:"config"`
 		Events  []string          `json:"events"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -80,7 +81,7 @@ func (m *Module) handleUpsertNotificationDestinationByID(w http.ResponseWriter, 
 		Config  map[string]string `json:"config"`
 		Events  []string          `json:"events"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -90,7 +91,7 @@ func (m *Module) handleUpsertNotificationDestinationByID(w http.ResponseWriter, 
 	}
 	existing, err := m.getNotificationDestination(r.Context(), id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.NotFound(w, r)
 			return
 		}
@@ -136,7 +137,7 @@ func (m *Module) handleDeleteNotificationDestination(w http.ResponseWriter, r *h
 		return
 	}
 	if err := m.deleteNotificationDestination(r.Context(), id); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.NotFound(w, r)
 			return
 		}

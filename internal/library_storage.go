@@ -14,10 +14,10 @@ type libraryStorageRow struct {
 }
 
 type libraryStorageSummary struct {
-	TotalItems       int
-	TotalBytes       int64
-	DuplicateWaste   int64
-	Libraries        []libraryStorageRow
+	Libraries      []libraryStorageRow
+	TotalItems     int
+	TotalBytes     int64
+	DuplicateWaste int64
 }
 
 func (m *Module) getLibraryStorageSummary(ctx context.Context, serverID string) (libraryStorageSummary, error) {
@@ -46,20 +46,20 @@ func (m *Module) getLibraryStorageSummary(ctx context.Context, serverID string) 
 	if err != nil {
 		return libraryStorageSummary{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	summary := libraryStorageSummary{Libraries: make([]libraryStorageRow, 0)}
 	for rows.Next() {
 		var row libraryStorageRow
-		if err := rows.Scan(&row.ServerID, &row.LibraryName, &row.ItemCount, &row.TotalBytes); err != nil {
-			return libraryStorageSummary{}, err
+		if scanErr := rows.Scan(&row.ServerID, &row.LibraryName, &row.ItemCount, &row.TotalBytes); scanErr != nil {
+			return libraryStorageSummary{}, scanErr
 		}
 		summary.TotalItems += row.ItemCount
 		summary.TotalBytes += row.TotalBytes
 		summary.Libraries = append(summary.Libraries, row)
 	}
-	if err := rows.Err(); err != nil {
-		return libraryStorageSummary{}, err
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return libraryStorageSummary{}, rowsErr
 	}
 
 	groups, err := m.listLibraryDuplicates(ctx, serverID, 100)

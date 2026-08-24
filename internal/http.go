@@ -201,12 +201,12 @@ func (m *Module) handleLibraryStorageHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total_items":             summary.TotalItems,
-		"total_bytes":             summary.TotalBytes,
-		"duplicate_waste_bytes":   summary.DuplicateWaste,
-		"total_human":             formatBytes(summary.TotalBytes),
-		"duplicate_waste_human":   formatBytes(summary.DuplicateWaste),
-		"libraries":               summary.Libraries,
+		"total_items":           summary.TotalItems,
+		"total_bytes":           summary.TotalBytes,
+		"duplicate_waste_bytes": summary.DuplicateWaste,
+		"total_human":           formatBytes(summary.TotalBytes),
+		"duplicate_waste_human": formatBytes(summary.DuplicateWaste),
+		"libraries":             summary.Libraries,
 	})
 }
 
@@ -254,7 +254,7 @@ func (m *Module) handleIngestHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ev SessionEvent
-	if err := json.Unmarshal(body, &ev); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &ev); unmarshalErr != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -267,12 +267,12 @@ func (m *Module) handleIngestHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type importTautulliHTTPRequest struct {
-	ServerID     string `json:"server_id"`
-	TautulliURL  string `json:"tautulli_url"`
-	APIKey       string `json:"api_key"`
-	RecordsJSON  string `json:"records_json"`
-	MaxRecords   int32  `json:"max_records"`
-	DryRun       bool   `json:"dry_run"`
+	ServerID    string `json:"server_id"`
+	TautulliURL string `json:"tautulli_url"`
+	APIKey      string `json:"api_key"`
+	RecordsJSON string `json:"records_json"`
+	MaxRecords  int32  `json:"max_records"`
+	DryRun      bool   `json:"dry_run"`
 }
 
 func (m *Module) handleImportTautulliHTTP(w http.ResponseWriter, r *http.Request) {
@@ -287,18 +287,18 @@ func (m *Module) handleImportTautulliHTTP(w http.ResponseWriter, r *http.Request
 	}
 	var req importTautulliHTTPRequest
 	if len(body) > 0 {
-		if err := json.Unmarshal(body, &req); err != nil {
+		if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
 	}
 	resp, err := m.ImportTautulliHistory(r.Context(), &monitorv1.ImportTautulliHistoryRequest{
-		ServerId:     req.ServerID,
-		TautulliUrl:  req.TautulliURL,
-		ApiKey:       req.APIKey,
-		RecordsJson:  req.RecordsJSON,
-		MaxRecords:   req.MaxRecords,
-		DryRun:       req.DryRun,
+		ServerId:    req.ServerID,
+		TautulliUrl: req.TautulliURL,
+		ApiKey:      req.APIKey,
+		RecordsJson: req.RecordsJSON,
+		MaxRecords:  req.MaxRecords,
+		DryRun:      req.DryRun,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -312,11 +312,11 @@ func (m *Module) handleImportTautulliHTTP(w http.ResponseWriter, r *http.Request
 }
 
 type importJellystatHTTPRequest struct {
-	ServerID    string `json:"server_id"`
-	ServerType  string `json:"server_type"`
-	BackupJSON  string `json:"backup_json"`
-	MaxRecords  int32  `json:"max_records"`
-	DryRun      bool   `json:"dry_run"`
+	ServerID   string `json:"server_id"`
+	ServerType string `json:"server_type"`
+	BackupJSON string `json:"backup_json"`
+	MaxRecords int32  `json:"max_records"`
+	DryRun     bool   `json:"dry_run"`
 }
 
 func (m *Module) handleImportJellystatHTTP(w http.ResponseWriter, r *http.Request) {
@@ -331,17 +331,17 @@ func (m *Module) handleImportJellystatHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	var req importJellystatHTTPRequest
 	if len(body) > 0 {
-		if err := json.Unmarshal(body, &req); err != nil {
+		if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
 	}
 	resp, err := m.ImportJellystatHistory(r.Context(), &monitorv1.ImportJellystatHistoryRequest{
-		ServerId:    req.ServerID,
-		ServerType:  req.ServerType,
-		BackupJson:  req.BackupJSON,
-		MaxRecords:  req.MaxRecords,
-		DryRun:      req.DryRun,
+		ServerId:   req.ServerID,
+		ServerType: req.ServerType,
+		BackupJson: req.BackupJSON,
+		MaxRecords: req.MaxRecords,
+		DryRun:     req.DryRun,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

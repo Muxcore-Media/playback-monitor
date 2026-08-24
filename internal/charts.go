@@ -47,7 +47,7 @@ func (m *Module) playsByDate(ctx context.Context, days int) ([]playsByDateRow, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]playsByDateRow, 0)
 	for rows.Next() {
 		var row playsByDateRow
@@ -76,7 +76,7 @@ func (m *Module) playsByHour(ctx context.Context, days int) ([]chartBucketRow, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var hour, count int
 		if err := rows.Scan(&hour, &count); err != nil {
@@ -117,7 +117,7 @@ func (m *Module) playsByDayOfWeek(ctx context.Context, days int) ([]chartBucketR
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var dow, count int
 		if err := rows.Scan(&dow, &count); err != nil {
@@ -161,7 +161,7 @@ func (m *Module) playsByMonth(ctx context.Context, days int) ([]chartBucketRow, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]chartBucketRow, 0)
 	for rows.Next() {
 		var month string
@@ -181,7 +181,7 @@ func (m *Module) playsByStreamType(ctx context.Context, days int) ([]chartBucket
 	}
 	out := make([]chartBucketRow, 0, len(transcodes))
 	for _, row := range transcodes {
-		out = append(out, chartBucketRow{Key: row.Key, Label: row.Label, Count: row.Count})
+		out = append(out, chartBucketRow(row))
 	}
 	return out, nil
 }
@@ -213,7 +213,7 @@ func (m *Module) playsByTopUsers(ctx context.Context, days, limit int) ([]chartB
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanChartBucketRows(rows)
 }
 
@@ -244,7 +244,7 @@ func (m *Module) playsByTopPlatforms(ctx context.Context, days, limit int) ([]ch
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanChartBucketRows(rows)
 }
 

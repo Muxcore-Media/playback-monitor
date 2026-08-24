@@ -10,6 +10,8 @@ import (
 )
 
 type recentlyAddedItem struct {
+	AddedAt       time.Time
+	RemovedAt     *time.Time
 	ServerID      string
 	ServerType    string
 	ItemID        string
@@ -18,8 +20,6 @@ type recentlyAddedItem struct {
 	MediaType     string
 	LibraryName   string
 	FileSizeBytes int64
-	AddedAt       time.Time
-	RemovedAt     *time.Time
 }
 
 type recentlyAddedCursor struct {
@@ -46,7 +46,7 @@ func decodeRecentlyAddedCursor(raw string) (time.Time, string, string, error) {
 		return time.Time{}, "", "", fmt.Errorf("invalid cursor")
 	}
 	var cur recentlyAddedCursor
-	if err := json.Unmarshal(data, &cur); err != nil {
+	if unmarshalErr := json.Unmarshal(data, &cur); unmarshalErr != nil {
 		return time.Time{}, "", "", fmt.Errorf("invalid cursor")
 	}
 	if cur.ServerID == "" || cur.ItemID == "" || cur.AddedAt == "" {
@@ -132,7 +132,7 @@ func (m *Module) listRecentlyAddedLibraryItems(
 	if err != nil {
 		return nil, "", err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]recentlyAddedItem, 0)
 	for rows.Next() {

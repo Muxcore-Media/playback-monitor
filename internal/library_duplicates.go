@@ -19,8 +19,8 @@ type libraryDuplicateCopy struct {
 type libraryDuplicateGroup struct {
 	GroupKey  string
 	Title     string
-	CopyCount int
 	Copies    []libraryDuplicateCopy
+	CopyCount int
 }
 
 func normalizeDuplicateTitle(title string) string {
@@ -70,30 +70,30 @@ func (m *Module) listLibraryDuplicates(ctx context.Context, serverID string, lim
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	grouped := make(map[string]*libraryDuplicateGroup)
 	for rows.Next() {
-		var copy libraryDuplicateCopy
+		var dupCopy libraryDuplicateCopy
 		var muxcoreID string
-		if err := rows.Scan(&copy.ServerID, &copy.ItemID, &muxcoreID, &copy.Title,
-			&copy.LibraryName, &copy.MediaPath, &copy.FileSizeBytes); err != nil {
+		if err := rows.Scan(&dupCopy.ServerID, &dupCopy.ItemID, &muxcoreID, &dupCopy.Title,
+			&dupCopy.LibraryName, &dupCopy.MediaPath, &dupCopy.FileSizeBytes); err != nil {
 			return nil, err
 		}
-		key := duplicateGroupKey(muxcoreID, copy.Title)
+		key := duplicateGroupKey(muxcoreID, dupCopy.Title)
 		if key == "" {
 			continue
 		}
 		g, ok := grouped[key]
 		if !ok {
-			title := strings.TrimSpace(copy.Title)
+			title := strings.TrimSpace(dupCopy.Title)
 			if title == "" {
 				title = muxcoreID
 			}
 			g = &libraryDuplicateGroup{GroupKey: key, Title: title}
 			grouped[key] = g
 		}
-		g.Copies = append(g.Copies, copy)
+		g.Copies = append(g.Copies, dupCopy)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

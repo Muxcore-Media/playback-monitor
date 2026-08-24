@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -48,7 +49,7 @@ func (m *Module) ensureUserIdentity(ctx context.Context, db *sql.DB, serverID, u
 		)
 		return identityID, nil
 	}
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
 
@@ -92,7 +93,7 @@ func (m *Module) backfillUserIdentities(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type row struct {
 		serverID, userID, userName string
@@ -192,7 +193,7 @@ func (m *Module) listServerUsersForIdentity(ctx context.Context, identityID stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]publicUserAccount, 0)
 	for rows.Next() {
 		var acc publicUserAccount

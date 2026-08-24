@@ -20,10 +20,10 @@ import (
 )
 
 type tautulliImportStats struct {
-	Imported      int
-	Skipped       int
-	Failed        int
-	TotalFetched  int
+	Imported     int
+	Skipped      int
+	Failed       int
+	TotalFetched int
 }
 
 func (m *Module) ImportTautulliHistory(ctx context.Context, req *monitorv1.ImportTautulliHistoryRequest) (*monitorv1.ImportTautulliHistoryResponse, error) {
@@ -53,7 +53,7 @@ func (m *Module) ImportTautulliHistory(ctx context.Context, req *monitorv1.Impor
 		return nil, fmt.Errorf("records_json or tautulli_url+api_key required")
 	}
 	if err != nil {
-		return &monitorv1.ImportTautulliHistoryResponse{Error: err.Error()}, nil
+		return &monitorv1.ImportTautulliHistoryResponse{Error: err.Error()}, nil //nolint:nilerr // application-level failure encoded in response
 	}
 	if len(records) > maxRecords {
 		records = records[:maxRecords]
@@ -61,10 +61,10 @@ func (m *Module) ImportTautulliHistory(ctx context.Context, req *monitorv1.Impor
 
 	stats, importErr := m.importTautulliRecords(ctx, serverID, records, req.GetDryRun())
 	resp := &monitorv1.ImportTautulliHistoryResponse{
-		Imported:     int32(stats.Imported),
-		Skipped:      int32(stats.Skipped),
-		Failed:       int32(stats.Failed),
-		TotalFetched: int32(stats.TotalFetched),
+		Imported:     int32(stats.Imported),     //nolint:gosec // import counts are bounded by maxRecords
+		Skipped:      int32(stats.Skipped),      //nolint:gosec // import counts are bounded by maxRecords
+		Failed:       int32(stats.Failed),       //nolint:gosec // import counts are bounded by maxRecords
+		TotalFetched: int32(stats.TotalFetched), //nolint:gosec // import counts are bounded by maxRecords
 	}
 	if importErr != nil {
 		resp.Error = importErr.Error()
@@ -308,7 +308,7 @@ func fetchTautulliHistoryPage(ctx context.Context, baseURL, apiKey string, start
 	q.Set("order_dir", "desc")
 	reqURL := base + "/api/v2?" + q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -316,7 +316,7 @@ func fetchTautulliHistoryPage(ctx context.Context, baseURL, apiKey string, start
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return nil, 0, err

@@ -15,8 +15,8 @@ type breakdownRow struct {
 }
 
 type userWatchStat struct {
-	Username    string
-	PlayCount   int
+	Username     string
+	PlayCount    int
 	WatchMinutes float64
 }
 
@@ -84,7 +84,7 @@ func (m *Module) listUserWatchStats(ctx context.Context, days, limit int) ([]use
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]userWatchStat, 0)
 	for rows.Next() {
 		var u userWatchStat
@@ -101,7 +101,7 @@ func (m *Module) groupCount(db *sql.DB, ctx context.Context, query, since string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]breakdownRow, 0)
 	for rows.Next() {
 		var key string

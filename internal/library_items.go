@@ -9,6 +9,7 @@ import (
 )
 
 type libraryItemRecord struct {
+	UpdatedAt     time.Time
 	ServerID      string
 	ItemID        string
 	MuxcoreID     string
@@ -17,7 +18,6 @@ type libraryItemRecord struct {
 	LibraryName   string
 	MediaPath     string
 	FileSizeBytes int64
-	UpdatedAt     time.Time
 }
 
 func (m *Module) upsertLibraryItem(ctx context.Context, serverID string, ev SessionEvent) error {
