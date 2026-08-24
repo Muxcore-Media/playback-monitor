@@ -7,16 +7,16 @@ import (
 )
 
 type libraryCatalogRollup struct {
-	ServerID       string
-	ServerType     string
-	LibraryName    string
-	ItemCount      int
-	MovieCount     int
-	EpisodeCount   int
-	ShowCount      int
-	TrackCount     int
-	TotalFileSize  int64
-	Resolutions    map[string]int
+	Resolutions   map[string]int
+	ServerID      string
+	ServerType    string
+	LibraryName   string
+	ItemCount     int
+	MovieCount    int
+	EpisodeCount  int
+	ShowCount     int
+	TrackCount    int
+	TotalFileSize int64
 }
 
 func activeLibraryItemsSQL(alias string) string {
@@ -61,23 +61,23 @@ func (m *Module) listLibraryCatalogRollups(ctx context.Context, serverID string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byKey := make(map[string]*libraryCatalogRollup)
 	order := make([]string, 0)
 	for rows.Next() {
 		var row libraryCatalogRollup
-		if err := rows.Scan(&row.ServerID, &row.ServerType, &row.LibraryName,
-			&row.ItemCount, &row.MovieCount, &row.EpisodeCount, &row.ShowCount, &row.TrackCount, &row.TotalFileSize); err != nil {
-			return nil, err
+		if scanErr := rows.Scan(&row.ServerID, &row.ServerType, &row.LibraryName,
+			&row.ItemCount, &row.MovieCount, &row.EpisodeCount, &row.ShowCount, &row.TrackCount, &row.TotalFileSize); scanErr != nil {
+			return nil, scanErr
 		}
 		row.Resolutions = map[string]int{}
 		key := row.ServerID + "\x00" + row.LibraryName
 		byKey[key] = &row
 		order = append(order, key)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	resQuery := `
@@ -101,7 +101,7 @@ func (m *Module) listLibraryCatalogRollups(ctx context.Context, serverID string)
 	if err != nil {
 		return nil, err
 	}
-	defer resRows.Close()
+	defer func() { _ = resRows.Close() }()
 
 	for resRows.Next() {
 		var serverID, libraryName, resolution string

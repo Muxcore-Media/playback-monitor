@@ -34,7 +34,7 @@ func (m *Module) ImportJellystatHistory(ctx context.Context, req *monitorv1.Impo
 
 	records, err := parseJellystatBackupJSON(raw)
 	if err != nil {
-		return &monitorv1.ImportJellystatHistoryResponse{Error: err.Error()}, nil
+		return &monitorv1.ImportJellystatHistoryResponse{Error: err.Error()}, nil //nolint:nilerr // application-level failure encoded in response
 	}
 	if len(records) > maxRecords {
 		records = records[:maxRecords]
@@ -42,10 +42,10 @@ func (m *Module) ImportJellystatHistory(ctx context.Context, req *monitorv1.Impo
 
 	stats, importErr := m.importJellystatRecords(ctx, serverID, serverType, records, req.GetDryRun())
 	resp := &monitorv1.ImportJellystatHistoryResponse{
-		Imported:     int32(stats.Imported),
-		Skipped:      int32(stats.Skipped),
-		Failed:       int32(stats.Failed),
-		TotalFetched: int32(stats.TotalFetched),
+		Imported:     int32(stats.Imported),     //nolint:gosec // import counts are bounded by maxRecords
+		Skipped:      int32(stats.Skipped),      //nolint:gosec // import counts are bounded by maxRecords
+		Failed:       int32(stats.Failed),       //nolint:gosec // import counts are bounded by maxRecords
+		TotalFetched: int32(stats.TotalFetched), //nolint:gosec // import counts are bounded by maxRecords
 	}
 	if importErr != nil {
 		resp.Error = importErr.Error()

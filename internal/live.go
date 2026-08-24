@@ -16,8 +16,8 @@ type streamLiveEvent struct {
 }
 
 type liveHub struct {
-	mu      sync.RWMutex
 	clients map[chan []byte]struct{}
+	mu      sync.RWMutex
 }
 
 func newLiveHub() *liveHub {
@@ -50,8 +50,8 @@ func (h *liveHub) broadcast(payload []byte) {
 	}
 }
 
-func (m *Module) publishStreamLiveEvent(eventType, sessionID string) {
-	active, err := m.listActiveSessions(context.Background(), "", 500)
+func (m *Module) publishStreamLiveEvent(ctx context.Context, eventType, sessionID string) {
+	active, err := m.listActiveSessions(ctx, "", 500)
 	if err != nil {
 		return
 	}
@@ -81,7 +81,7 @@ func (m *Module) handleStreamEventsSSE(w http.ResponseWriter, r *http.Request) {
 	ch := m.liveHub.subscribe()
 	defer m.liveHub.unsubscribe(ch)
 
-	fmt.Fprintf(w, "event: connected\ndata: {\"event\":\"connected\"}\n\n")
+	_, _ = fmt.Fprintf(w, "event: connected\ndata: {\"event\":\"connected\"}\n\n")
 	flusher.Flush()
 
 	ctx := r.Context()
@@ -93,7 +93,7 @@ func (m *Module) handleStreamEventsSSE(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
-			fmt.Fprintf(w, "event: session\ndata: %s\n\n", msg)
+			_, _ = fmt.Fprintf(w, "event: session\ndata: %s\n\n", msg)
 			flusher.Flush()
 		}
 	}

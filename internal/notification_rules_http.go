@@ -3,6 +3,7 @@ package internal
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -28,17 +29,17 @@ func (m *Module) handleUpsertNotificationRule(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req struct {
+		Enabled         *bool                   `json:"enabled"`
 		ID              string                  `json:"id"`
 		Name            string                  `json:"name"`
-		Enabled         *bool                   `json:"enabled"`
 		EventType       string                  `json:"event_type"`
 		TitleTemplate   string                  `json:"title_template"`
 		MessageTemplate string                  `json:"message_template"`
 		Severity        string                  `json:"severity"`
-		Filters         NotificationRuleFilters `json:"filters"`
 		DestinationIDs  []string                `json:"destination_ids"`
+		Filters         NotificationRuleFilters `json:"filters"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -75,7 +76,7 @@ func (m *Module) handleDeleteNotificationRule(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := m.deleteNotificationRule(r.Context(), id); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.NotFound(w, r)
 			return
 		}
@@ -97,16 +98,16 @@ func (m *Module) handleUpsertNotificationRuleByID(w http.ResponseWriter, r *http
 		return
 	}
 	var req struct {
-		Name            string                  `json:"name"`
 		Enabled         *bool                   `json:"enabled"`
+		Name            string                  `json:"name"`
 		EventType       string                  `json:"event_type"`
 		TitleTemplate   string                  `json:"title_template"`
 		MessageTemplate string                  `json:"message_template"`
 		Severity        string                  `json:"severity"`
-		Filters         NotificationRuleFilters `json:"filters"`
 		DestinationIDs  []string                `json:"destination_ids"`
+		Filters         NotificationRuleFilters `json:"filters"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}

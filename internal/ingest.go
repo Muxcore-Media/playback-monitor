@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,71 +13,71 @@ import (
 )
 
 type SessionEvent struct {
-	EventType          string
-	SourceModule       string
-	ServerID           string
-	ServerType         string
-	ExternalSessionID  string
-	UserID             string
-	UserName           string
-	IdentityID         string
-	ItemID             string
-	MuxcoreID          string
-	Title              string
-	MediaType          string
-	PositionSeconds    int64
-	DurationSeconds    int64
-	IsPaused           bool
-	IsTranscode        bool
-	Platform           string
-	Device             string
-	Player             string
-	IPAddress          string
-	GeoCountry         string
-	GeoCity            string
-	GeoLat             float64
-	GeoLon             float64
-	MediaPath          string
-	LibraryName        string
-	StreamResolution   string
-	PlayMethod         string
-	ImdbID             string
-	TmdbID             int64
-	TvdbID             int64
-	OccurredAt         time.Time
+	OccurredAt        time.Time
+	Platform          string
+	Device            string
+	ServerType        string
+	ExternalSessionID string
+	UserID            string
+	UserName          string
+	IdentityID        string
+	ItemID            string
+	MuxcoreID         string
+	Title             string
+	MediaType         string
+	SourceModule      string
+	ImdbID            string
+	PlayMethod        string
+	ServerID          string
+	StreamResolution  string
+	IPAddress         string
+	Player            string
+	EventType         string
+	GeoCountry        string
+	GeoCity           string
+	LibraryName       string
+	MediaPath         string
+	GeoLon            float64
+	GeoLat            float64
+	DurationSeconds   int64
+	TmdbID            int64
+	TvdbID            int64
+	PositionSeconds   int64
+	IsTranscode       bool
+	IsPaused          bool
 }
 
 type SessionRecord struct {
-	ID                string
-	ServerID          string
-	ServerType        string
-	ExternalSessionID string
-	State             string
+	StartedAt         time.Time
+	LastProgressAt    time.Time
+	StoppedAt         time.Time
+	ItemID            string
+	Device            string
 	UserID            string
 	UserName          string
-	ItemID            string
+	ID                string
 	MuxcoreID         string
 	ImdbID            string
-	TmdbID            int64
-	TvdbID            int64
+	SourceModule      string
+	GeoCity           string
 	Title             string
 	MediaType         string
-	StartedAt         time.Time
-	StoppedAt         time.Time
-	LastProgressAt    time.Time
-	PositionSeconds   float64
-	DurationSeconds   float64
-	IsTranscode       bool
+	ExternalSessionID string
+	ServerType        string
+	ServerID          string
+	GeoCountry        string
+	IPAddress         string
+	Player            string
 	PlayMethod        string
 	Platform          string
-	Device            string
-	Player            string
-	IPAddress         string
-	GeoCountry        string
-	GeoCity           string
+	State             string
+	DurationSeconds   float64
+	PositionSeconds   float64
+	TvdbID            int64
 	GeoLat            float64
 	GeoLon            float64
-	SourceModule      string
+	TmdbID            int64
+	IsTranscode       bool
 }
 
 func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessionID string, created bool, err error) {
@@ -104,8 +105,8 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 	if db == nil {
 		return "", false, fmt.Errorf("db not initialized")
 	}
-	if err := m.ensureServerRegistered(ctx, db, serverID, serverType, ev.SourceModule); err != nil {
-		return "", false, err
+	if regErr := m.ensureServerRegistered(ctx, db, serverID, serverType, ev.SourceModule); regErr != nil {
+		return "", false, regErr
 	}
 	identityID, err := m.ensureUserIdentity(ctx, db, serverID, ev.UserID, ev.UserName)
 	if err != nil {
@@ -121,7 +122,7 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
 			if created {
-				go m.firePlaybackNotificationRules(context.Background(), playbackevents.EventPlaybackStarted, ev)
+				go m.firePlaybackNotificationRules(context.Background(), playbackevents.EventPlaybackStarted, ev) //nolint:gosec // notification dispatch outlives ingest handler
 			}
 		}
 		return id, created, err
@@ -135,7 +136,7 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 		id, created, err := m.stopSession(ctx, db, ev, serverID, externalID, nowStr)
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
-			go m.notifySessionStop(context.Background(), ev)
+			go m.notifySessionStop(context.Background(), ev) //nolint:gosec // notification dispatch outlives ingest handler
 		}
 		return id, created, err
 	default:
@@ -176,7 +177,7 @@ func (m *Module) startSession(ctx context.Context, db *sql.DB, ev SessionEvent, 
 		)
 		return existingID, false, err
 	}
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", false, err
 	}
 	mediaPath, libraryName := sessionPathFields(ev)
@@ -209,7 +210,7 @@ func (m *Module) progressSession(ctx context.Context, db *sql.DB, ev SessionEven
 		`SELECT id FROM sessions WHERE server_id = ? AND external_session_id = ? AND state IN ('playing','paused') ORDER BY started_at DESC LIMIT 1`,
 		serverID, externalID,
 	).Scan(&id)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return m.startSession(ctx, db, ev, serverID, strings.TrimSpace(ev.ServerType), externalID, nowStr)
 	}
 	if err != nil {
@@ -251,7 +252,7 @@ func (m *Module) stopSession(ctx context.Context, db *sql.DB, ev SessionEvent, s
 		`SELECT id FROM sessions WHERE server_id = ? AND external_session_id = ? AND state IN ('playing','paused') ORDER BY started_at DESC LIMIT 1`,
 		serverID, externalID,
 	).Scan(&id)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		id = uuid.NewString()
 		geoCountry, geoCity, geoLat, geoLon := geoInsertValues(ev)
 		mediaPath, libraryName := sessionPathFields(ev)
@@ -364,7 +365,7 @@ func (m *Module) querySessions(ctx context.Context, db *sql.DB, query string, ar
 	if err != nil {
 		return nil, err
 	}
-	defer rs.Close()
+	defer func() { _ = rs.Close() }()
 	out := make([]SessionRecord, 0)
 	for rs.Next() {
 		var rec SessionRecord

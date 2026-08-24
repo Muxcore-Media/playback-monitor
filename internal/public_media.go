@@ -237,7 +237,7 @@ func (m *Module) listMediaWatchers(ctx context.Context, rec *resolvedMedia, limi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mediaWatcherRow, 0)
 	for rows.Next() {
 		var row mediaWatcherRow
@@ -293,11 +293,11 @@ func (m *Module) listMediaHistoryPage(ctx context.Context, rec *resolvedMedia, p
 
 func publicMediaJSON(rec *resolvedMedia, seasonCount, episodeCount int) map[string]any {
 	availability := []map[string]any{{
-		"server_id":     rec.ServerID,
-		"item_id":       rec.ItemID,
-		"library_name":  rec.LibraryName,
-		"media_path":    rec.MediaPath,
-		"status":        "available",
+		"server_id":    rec.ServerID,
+		"item_id":      rec.ItemID,
+		"library_name": rec.LibraryName,
+		"media_path":   rec.MediaPath,
+		"status":       "available",
 	}}
 	out := map[string]any{
 		"ref":          mediaRefString(rec),

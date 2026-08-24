@@ -29,29 +29,24 @@ const moduleVersion = "0.1.0"
 
 type Module struct {
 	monitorv1.UnimplementedPlaybackMonitorServiceServer
-
-	mu  sync.RWMutex
-	db  *sql.DB
-	dbDialect dbDialect
-	cfgMu sync.RWMutex
-
-	id       string
-	dbPath   string
-	grpcAddr string
-	httpAddr string
-
-	grpcSrv *grpc.Server
-	grpcLis net.Listener
-	httpLis net.Listener
-
-	mc     *client.Client
-	stopCh chan struct{}
-
+	httpLis              net.Listener
+	grpcLis              net.Listener
+	liveHub              *liveHub
+	db                   *sql.DB
+	stopCh               chan struct{}
+	mc                   *client.Client
+	grpcSrv              *grpc.Server
+	httpAddr             string
+	grpcAddr             string
+	dbPath               string
+	id                   string
+	dbDialect            dbDialect
+	publicAPIKey         string
+	cfgMu                sync.RWMutex
+	mu                   sync.RWMutex
 	notifyOnSessionStart bool
 	notifyOnSessionStop  bool
 	geoIPEnabled         bool
-	publicAPIKey         string
-	liveHub              *liveHub
 }
 
 type Config struct {
@@ -123,14 +118,15 @@ func (m *Module) Init(ctx context.Context) error {
 	if err := m.initDB(ctx); err != nil {
 		return err
 	}
-	lis, err := net.Listen("tcp", m.grpcAddr)
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, "tcp", m.grpcAddr)
 	if err != nil {
 		return fmt.Errorf("listen gRPC %s: %w", m.grpcAddr, err)
 	}
 	m.grpcLis = lis
-	httpLis, err := net.Listen("tcp", m.httpAddr)
+	httpLis, err := lc.Listen(ctx, "tcp", m.httpAddr)
 	if err != nil {
-		lis.Close()
+		_ = lis.Close()
 		return fmt.Errorf("listen HTTP %s: %w", m.httpAddr, err)
 	}
 	m.httpLis = httpLis
@@ -222,12 +218,12 @@ func (m *Module) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v2/public/media/{ref}/children", m.handlePublicMediaChildren)
 	go func() {
 		slog.Info("playback-monitor HTTP started", "addr", m.httpAddr)
-		if err := http.Serve(m.httpLis, mux); err != nil && err != http.ErrServerClosed {
+		if err := http.Serve(m.httpLis, mux); err != nil && err != http.ErrServerClosed { //nolint:gosec // listener lifecycle managed by Stop
 			slog.Error("playback-monitor HTTP error", "error", err)
 		}
 	}()
 
-	go m.connectCoreAndSubscribe()
+	go m.connectCoreAndSubscribe(ctx) //nolint:gosec // module lifecycle goroutine outlives Start call
 	return nil
 }
 
@@ -252,7 +248,7 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.mc = nil
 	m.mu.Unlock()
 	if mc != nil {
-		mc.Close()
+		_ = mc.Close()
 	}
 	slog.Info("playback-monitor stopped")
 	return nil
@@ -268,7 +264,7 @@ func (m *Module) Health(ctx context.Context) error {
 	return db.PingContext(ctx)
 }
 
-func (m *Module) connectCoreAndSubscribe() {
+func (m *Module) connectCoreAndSubscribe(ctx context.Context) {
 	addr := os.Getenv("MUXCORE_GRPC_ADDR")
 	if addr == "" {
 		return
@@ -299,14 +295,14 @@ func (m *Module) connectCoreAndSubscribe() {
 		}
 		m.mu.Lock()
 		if m.mc != nil {
-			m.mc.Close()
+			_ = m.mc.Close()
 		}
 		m.mc = c
 		m.mu.Unlock()
 		slog.Info("playback-monitor: connected to core mesh", "addr", addr)
-		m.subscribePlaybackEvents()
-		m.subscribeLibraryCatalogEvents()
-		m.subscribeGuardViolationEvents()
+		m.subscribePlaybackEvents(ctx)
+		m.subscribeLibraryCatalogEvents(ctx)
+		m.subscribeGuardViolationEvents(ctx)
 		return
 	}
 }
@@ -317,27 +313,27 @@ func (m *Module) eventClient() *client.Client {
 	return m.mc
 }
 
-func (m *Module) subscribePlaybackEvents() {
+func (m *Module) subscribePlaybackEvents(ctx context.Context) {
 	mc := m.eventClient()
 	if mc == nil {
 		return
 	}
 	for _, et := range []string{events.EventPlaybackStarted, events.EventPlaybackProgress, events.EventPlaybackStopped} {
-		ch, cancel, err := mc.Events.Subscribe(context.Background(), et)
+		ch, cancel, err := mc.Events.Subscribe(ctx, et)
 		if err != nil {
 			slog.Debug("playback-monitor: subscribe failed", "type", et, "error", err)
 			continue
 		}
-		go func(events <-chan *eventsv1.Event, eventType string, cancel context.CancelFunc) {
+		go func(events <-chan *eventsv1.Event, eventType string, cancel context.CancelFunc, runCtx context.Context) {
 			defer cancel()
 			for evt := range events {
-				m.handlePlaybackEvent(eventType, evt)
+				m.handlePlaybackEvent(runCtx, eventType, evt)
 			}
-		}(ch, et, cancel)
+		}(ch, et, cancel, ctx)
 	}
 }
 
-func (m *Module) handlePlaybackEvent(eventType string, evt *eventsv1.Event) {
+func (m *Module) handlePlaybackEvent(ctx context.Context, eventType string, evt *eventsv1.Event) {
 	if evt == nil || len(evt.Payload) == 0 {
 		return
 	}
@@ -353,12 +349,12 @@ func (m *Module) handlePlaybackEvent(eventType string, evt *eventsv1.Event) {
 	if ev.EventType == "" {
 		ev.EventType = eventType
 	}
-	sessionID, _, ingestErr := m.ingestSessionEvent(context.Background(), ev)
+	sessionID, _, ingestErr := m.ingestSessionEvent(ctx, ev)
 	if ingestErr != nil {
 		slog.Debug("playback-monitor: ingest failed", "type", eventType, "error", ingestErr)
 		return
 	}
-	m.publishStreamLiveEvent(eventType, sessionID)
+	m.publishStreamLiveEvent(ctx, eventType, sessionID)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

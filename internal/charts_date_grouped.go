@@ -10,10 +10,10 @@ import (
 )
 
 type playsByDateChartOpts struct {
-	Days     int
+	YAxis    string
 	UserIDs  []string
+	Days     int
 	Grouping bool
-	YAxis    string // plays | duration
 }
 
 type playsByDateSeries struct {
@@ -117,7 +117,7 @@ func (m *Module) playsByDateChart(ctx context.Context, opts playsByDateChartOpts
 	if err != nil {
 		return playsByDateChart{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type dayBucket struct {
 		tv, movie, music, live int

@@ -133,7 +133,7 @@ func (m *Module) concurrentStreamsByStreamType(ctx context.Context, days int) (c
 	if err != nil {
 		return concurrentStreamsChart{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byDayDirect := make(map[string][]concurrentInterval)
 	byDayTranscode := make(map[string][]concurrentInterval)

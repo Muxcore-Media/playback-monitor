@@ -12,20 +12,20 @@ import (
 )
 
 type historyPageFilter struct {
-	ServerID       string
-	IdentityID     string
-	UserID         string
-	UserName       string
-	MediaItemID    string
-	MediaMuxcoreID string
-	RatingKey      string
-	MediaType      string
-	ImdbID         string
-	TmdbID         int64
-	TvdbID         int64
 	Since          time.Time
 	Until          time.Time
 	Watched        *bool
+	RatingKey      string
+	MediaItemID    string
+	MediaMuxcoreID string
+	ServerID       string
+	MediaType      string
+	ImdbID         string
+	UserName       string
+	UserID         string
+	IdentityID     string
+	TmdbID         int64
+	TvdbID         int64
 }
 
 func parseHistoryPageFilter(r *http.Request) (historyPageFilter, error) {
@@ -138,22 +138,11 @@ func sessionWatchedSQL() string {
 	return `(position_seconds >= 60 OR (duration_seconds > 0 AND position_seconds / duration_seconds >= 0.9))`
 }
 
-func (m *Module) listHistoryPageFiltered(ctx context.Context, f historyPageFilter, pageSize int, cursorRaw string) ([]SessionRecord, string, error) {
-	if pageSize <= 0 {
-		pageSize = 25
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-	cursorStarted, cursorID, err := decodeHistoryCursor(cursorRaw)
-	if err != nil {
-		return nil, "", err
-	}
-
+func (m *Module) resolveHistoryPageFilter(ctx context.Context, f historyPageFilter) (historyPageFilter, error) {
 	if f.IdentityID != "" {
 		resolvedID, uid, uname, resolveErr := m.resolveIdentityID(ctx, f.IdentityID)
 		if resolveErr != nil {
-			return nil, "", resolveErr
+			return f, resolveErr
 		}
 		f.IdentityID = resolvedID
 		if f.UserID == "" {
@@ -165,7 +154,7 @@ func (m *Module) listHistoryPageFiltered(ctx context.Context, f historyPageFilte
 	}
 
 	if f.MediaItemID == "" && f.MediaMuxcoreID == "" && (strings.Contains(f.RatingKey, ":") || strings.HasPrefix(f.RatingKey, "muxcore:")) {
-		if rec, err := m.resolveMediaRef(ctx, f.RatingKey); err == nil && rec != nil {
+		if rec, mediaErr := m.resolveMediaRef(ctx, f.RatingKey); mediaErr == nil && rec != nil {
 			f.MediaItemID = rec.ItemID
 			f.MediaMuxcoreID = rec.MuxcoreID
 			if f.ServerID == "" {
@@ -174,14 +163,10 @@ func (m *Module) listHistoryPageFiltered(ctx context.Context, f historyPageFilte
 			f.RatingKey = ""
 		}
 	}
+	return f, nil
+}
 
-	m.mu.RLock()
-	db := m.db
-	m.mu.RUnlock()
-	if db == nil {
-		return nil, "", fmt.Errorf("db not initialized")
-	}
-
+func buildHistoryPageWhere(f historyPageFilter, cursorStarted time.Time, cursorID string) (string, []any) {
 	where := []string{`state = 'stopped'`}
 	args := []any{}
 	if strings.TrimSpace(f.ServerID) != "" {
@@ -237,8 +222,34 @@ func (m *Module) listHistoryPageFiltered(ctx context.Context, f historyPageFilte
 		where = append(where, `(started_at < ? OR (started_at = ? AND id < ?))`)
 		args = append(args, cursorStarted.Format(time.RFC3339Nano), cursorStarted.Format(time.RFC3339Nano), cursorID)
 	}
+	return strings.Join(where, " AND "), args
+}
 
-	whereSQL := strings.Join(where, " AND ")
+func (m *Module) listHistoryPageFiltered(ctx context.Context, f historyPageFilter, pageSize int, cursorRaw string) ([]SessionRecord, string, error) {
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	cursorStarted, cursorID, err := decodeHistoryCursor(cursorRaw)
+	if err != nil {
+		return nil, "", err
+	}
+
+	f, err = m.resolveHistoryPageFilter(ctx, f)
+	if err != nil {
+		return nil, "", err
+	}
+
+	m.mu.RLock()
+	db := m.db
+	m.mu.RUnlock()
+	if db == nil {
+		return nil, "", fmt.Errorf("db not initialized")
+	}
+
+	whereSQL, args := buildHistoryPageWhere(f, cursorStarted, cursorID)
 	query := `SELECT ` + sessionSelectCols + `
 		FROM sessions WHERE ` + whereSQL + `
 		ORDER BY started_at DESC, id DESC

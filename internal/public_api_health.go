@@ -28,12 +28,12 @@ func (m *Module) handlePublicHealth(w http.ResponseWriter, r *http.Request) {
 			online = time.Since(ts) < 7*24*time.Hour
 		}
 		out = append(out, map[string]any{
-			"id":              s.ID,
-			"name":            s.Name,
-			"type":            s.Type,
-			"source_module":   s.SourceModule,
-			"online":          online,
-			"active_streams":  s.ActiveSessions,
+			"id":               s.ID,
+			"name":             s.Name,
+			"type":             s.Type,
+			"source_module":    s.SourceModule,
+			"online":           online,
+			"active_streams":   s.ActiveSessions,
 			"last_activity_at": formatOptionalTime(lastSeen[s.ID]),
 		})
 	}
@@ -82,7 +82,7 @@ func (m *Module) serverLastActivity(ctx context.Context) (map[string]time.Time, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]time.Time{}
 	for rows.Next() {
 		var serverID, lastAt string

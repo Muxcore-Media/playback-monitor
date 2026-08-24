@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	notificationv1 "github.com/Muxcore-Media/contracts-notification/muxcore/notification/v1"
+	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -91,10 +91,6 @@ func (m *Module) notifySessionStopLegacy(ctx context.Context, ev SessionEvent) {
 	})
 }
 
-func (m *Module) notifySessionStart(ctx context.Context, ev SessionEvent) {
-	m.firePlaybackNotificationRules(ctx, playbackevents.EventPlaybackStarted, ev)
-}
-
 func (m *Module) notifySessionStop(ctx context.Context, ev SessionEvent) {
 	m.firePlaybackNotificationRules(ctx, playbackevents.EventPlaybackStopped, ev)
 }
@@ -108,7 +104,7 @@ func (m *Module) postNotification(ctx context.Context, title, message, severity 
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	cli := notificationv1.NewNotificationServiceClient(conn)
 	_, _ = cli.Notify(ctx, &notificationv1.NotifyRequest{
 		Title:        title,

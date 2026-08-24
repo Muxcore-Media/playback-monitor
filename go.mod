@@ -23,6 +23,8 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/Muxcore-Media/contracts-media v0.1.0 // indirect
+	github.com/Muxcore-Media/core/pkg/tenant v0.5.8 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/crypto v0.54.0 // indirect
@@ -41,3 +43,15 @@ replace github.com/Muxcore-Media/contracts-notification => ../contracts-notifica
 replace github.com/Muxcore-Media/contracts-playback => ../contracts-playback
 
 replace github.com/Muxcore-Media/playback-contract => ../playback-contract
+
+replace github.com/Muxcore-Media/core => ../core
+
+replace github.com/Muxcore-Media/core/pkg/contracts => ../core/pkg/contracts
+
+replace github.com/Muxcore-Media/core/sdk/go/client => ../core/sdk/go/client
+
+replace github.com/Muxcore-Media/core/sdk/go/module => ../core/sdk/go/module
+
+replace github.com/Muxcore-Media/contracts-media => ../contracts-media
+
+replace github.com/Muxcore-Media/core/pkg/tenant => ../core/pkg/tenant

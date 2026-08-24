@@ -60,7 +60,7 @@ func decodeHistoryCursor(raw string) (time.Time, string, error) {
 		return time.Time{}, "", fmt.Errorf("invalid cursor")
 	}
 	var cur historyCursor
-	if err := json.Unmarshal(data, &cur); err != nil {
+	if unmarshalErr := json.Unmarshal(data, &cur); unmarshalErr != nil {
 		return time.Time{}, "", fmt.Errorf("invalid cursor")
 	}
 	if strings.TrimSpace(cur.ID) == "" || strings.TrimSpace(cur.StartedAt) == "" {
@@ -76,14 +76,6 @@ func decodeHistoryCursor(raw string) (time.Time, string, error) {
 	return started.UTC(), cur.ID, nil
 }
 
-func (m *Module) listHistoryPage(ctx context.Context, serverID, userID, userName string, pageSize int, cursorRaw string) ([]SessionRecord, string, error) {
-	return m.listHistoryPageFiltered(ctx, historyPageFilter{
-		ServerID: serverID,
-		UserID:   userID,
-		UserName: userName,
-	}, pageSize, cursorRaw)
-}
-
 func (m *Module) listHistoryPageByIdentity(ctx context.Context, serverID, identityID string, pageSize int, cursorRaw string) ([]SessionRecord, string, error) {
 	return m.listHistoryPageFiltered(ctx, historyPageFilter{
 		ServerID:   serverID,
@@ -93,27 +85,27 @@ func (m *Module) listHistoryPageByIdentity(ctx context.Context, serverID, identi
 
 func publicStreamFromRecord(rec SessionRecord) map[string]any {
 	return map[string]any{
-		"id":                 rec.ID,
-		"server_id":          rec.ServerID,
-		"server_type":        rec.ServerType,
-		"username":           rec.UserName,
-		"user_id":            rec.UserID,
-		"media_title":        rec.Title,
-		"media_type":         rec.MediaType,
-		"item_id":            rec.ItemID,
-		"muxcore_id":         rec.MuxcoreID,
-		"state":              rec.State,
-		"progress_seconds":   rec.PositionSeconds,
-		"duration_seconds":   rec.DurationSeconds,
-		"started_at":         rec.StartedAt.UTC().Format(time.RFC3339),
-		"is_transcode":       rec.IsTranscode,
-		"play_method":        rec.PlayMethod,
-		"platform":           rec.Platform,
-		"device":             rec.Device,
-		"player":             rec.Player,
-		"ip_address":         rec.IPAddress,
-		"geo_country":        rec.GeoCountry,
-		"geo_city":           rec.GeoCity,
+		"id":               rec.ID,
+		"server_id":        rec.ServerID,
+		"server_type":      rec.ServerType,
+		"username":         rec.UserName,
+		"user_id":          rec.UserID,
+		"media_title":      rec.Title,
+		"media_type":       rec.MediaType,
+		"item_id":          rec.ItemID,
+		"muxcore_id":       rec.MuxcoreID,
+		"state":            rec.State,
+		"progress_seconds": rec.PositionSeconds,
+		"duration_seconds": rec.DurationSeconds,
+		"started_at":       rec.StartedAt.UTC().Format(time.RFC3339),
+		"is_transcode":     rec.IsTranscode,
+		"play_method":      rec.PlayMethod,
+		"platform":         rec.Platform,
+		"device":           rec.Device,
+		"player":           rec.Player,
+		"ip_address":       rec.IPAddress,
+		"geo_country":      rec.GeoCountry,
+		"geo_city":         rec.GeoCity,
 	}
 }
 
@@ -407,9 +399,9 @@ func (m *Module) handlePublicLibraryStorageHistory(w http.ResponseWriter, r *htt
 	history := make([]map[string]any, 0, len(points))
 	for _, p := range points {
 		history = append(history, map[string]any{
-			"day":          p.Day,
-			"total_bytes":  p.TotalBytes,
-			"item_count":   p.ItemCount,
+			"day":         p.Day,
+			"total_bytes": p.TotalBytes,
+			"item_count":  p.ItemCount,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

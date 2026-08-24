@@ -9,12 +9,12 @@ import (
 )
 
 type serverRecord struct {
+	CreatedAt      time.Time
 	ID             string
 	Name           string
 	Type           string
 	SourceModule   string
 	ActiveSessions int
-	CreatedAt      time.Time
 }
 
 func resolveServerID(ev SessionEvent) string {
@@ -70,9 +70,7 @@ func (m *Module) registerServer(ctx context.Context, serverID, name, serverType,
 	if strings.TrimSpace(serverID) == "" {
 		return serverRecord{}, fmt.Errorf("server id required")
 	}
-	if strings.TrimSpace(name) == "" {
-		name = serverDisplayName(serverID, serverType, sourceModule)
-	}
+	_ = name
 	m.mu.RLock()
 	db := m.db
 	m.mu.RUnlock()
@@ -100,7 +98,7 @@ func (m *Module) listServers(ctx context.Context) ([]serverRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]serverRecord, 0)
 	for rows.Next() {
 		var rec serverRecord

@@ -38,7 +38,7 @@ func (m *Module) itemWatchStats(ctx context.Context, itemID string, runtimeMinut
 	if err != nil {
 		return stats, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	seenUsers := make(map[string]struct{})
 	var lastAt time.Time
@@ -116,7 +116,7 @@ func (m *Module) listWatchUsers(ctx context.Context, query string, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	seen := make(map[string]string)
 	for rows.Next() {
 		var username string
@@ -149,17 +149,17 @@ func (m *Module) listWatchUsers(ctx context.Context, query string, limit int) ([
 }
 
 type watchStats struct {
-	ViewCount              int
 	LastWatchedAt          time.Time
-	NeverWatched           bool
+	UserDurationMinutes    map[string]float64
+	UserWatchedPercent     map[string]float64
+	ViewCount              int
 	DaysSinceLastWatch     int
 	PlayCount              int
 	UniqueUsers            int
 	TotalDurationMinutes   float64
 	LongestDurationMinutes float64
+	NeverWatched           bool
 	HasActivity            bool
-	UserDurationMinutes    map[string]float64
-	UserWatchedPercent     map[string]float64
 }
 
 func normalizeWatchUser(name string) string {

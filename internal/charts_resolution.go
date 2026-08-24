@@ -38,6 +38,6 @@ func (m *Module) playsByStreamResolution(ctx context.Context, days, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanChartBucketRows(rows)
 }

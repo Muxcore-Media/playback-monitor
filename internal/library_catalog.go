@@ -11,21 +11,21 @@ import (
 )
 
 type libraryCatalogEvent struct {
-	Action         string
-	ServerID       string
-	ServerType     string
-	ItemID         string
-	MuxcoreID      string
-	Title          string
-	MediaType      string
-	MediaPath      string
-	LibraryName    string
-	FileSizeBytes  int64
-	ImdbID         string
-	TmdbID         int64
-	TvdbID         int64
-	VideoResolution string
+	MediaType       string
+	ImdbID          string
+	ServerType      string
+	ItemID          string
+	MuxcoreID       string
+	Title           string
+	ServerID        string
+	LibraryName     string
+	Action          string
 	ParentID        string
+	MediaPath       string
+	VideoResolution string
+	TvdbID          int64
+	TmdbID          int64
+	FileSizeBytes   int64
 }
 
 func libraryCatalogFromJSON(sourceModule string, payload []byte) (libraryCatalogEvent, error) {
@@ -34,15 +34,15 @@ func libraryCatalogFromJSON(sourceModule string, payload []byte) (libraryCatalog
 		return libraryCatalogEvent{}, err
 	}
 	ev := libraryCatalogEvent{
-		Action:     strings.ToLower(strings.TrimSpace(stringField(raw, "action"))),
-		ServerID:   stringField(raw, "server_id", "serverId"),
-		ServerType: stringField(raw, "server_type", "serverType"),
-		ItemID:     stringField(raw, "item_id", "itemId", "ItemId"),
-		MuxcoreID:  stringField(raw, "muxcore_id", "muxcoreId"),
-		Title:      stringField(raw, "title", "Title", "Name"),
-		MediaType:  stringField(raw, "media_type", "mediaType", "itemType"),
-		MediaPath:  stringField(raw, "media_path", "mediaPath", "path"),
-		LibraryName: stringField(raw, "library_name", "libraryName"),
+		Action:        strings.ToLower(strings.TrimSpace(stringField(raw, "action"))),
+		ServerID:      stringField(raw, "server_id", "serverId"),
+		ServerType:    stringField(raw, "server_type", "serverType"),
+		ItemID:        stringField(raw, "item_id", "itemId", "ItemId"),
+		MuxcoreID:     stringField(raw, "muxcore_id", "muxcoreId"),
+		Title:         stringField(raw, "title", "Title", "Name"),
+		MediaType:     stringField(raw, "media_type", "mediaType", "itemType"),
+		MediaPath:     stringField(raw, "media_path", "mediaPath", "path"),
+		LibraryName:   stringField(raw, "library_name", "libraryName"),
 		FileSizeBytes: int64Field(raw, "file_size_bytes", "fileSizeBytes", "size", "Size"),
 	}
 	ev.ImdbID, ev.TmdbID, ev.TvdbID = externalIDsFromMap(raw)
@@ -129,7 +129,7 @@ func (m *Module) removeLibraryItem(ctx context.Context, serverID, itemID string)
 	return err
 }
 
-func (m *Module) handleLibraryItemEvent(evt *eventsv1.Event) {
+func (m *Module) handleLibraryItemEvent(ctx context.Context, evt *eventsv1.Event) {
 	if evt == nil || len(evt.Payload) == 0 {
 		return
 	}
@@ -141,25 +141,25 @@ func (m *Module) handleLibraryItemEvent(evt *eventsv1.Event) {
 	if err != nil {
 		return
 	}
-	if err := m.applyLibraryCatalogEvent(context.Background(), catalog); err != nil {
+	if err := m.applyLibraryCatalogEvent(ctx, catalog); err != nil {
 		// catalog sync is best-effort
 		_ = err
 	}
 }
 
-func (m *Module) subscribeLibraryCatalogEvents() {
+func (m *Module) subscribeLibraryCatalogEvents(ctx context.Context) {
 	mc := m.eventClient()
 	if mc == nil {
 		return
 	}
-	ch, cancel, err := mc.Events.Subscribe(context.Background(), "playback.library.item")
+	ch, cancel, err := mc.Events.Subscribe(ctx, "playback.library.item")
 	if err != nil {
 		return
 	}
-	go func(events <-chan *eventsv1.Event) {
+	go func(events <-chan *eventsv1.Event, runCtx context.Context) {
 		defer cancel()
 		for evt := range events {
-			m.handleLibraryItemEvent(evt)
+			m.handleLibraryItemEvent(runCtx, evt)
 		}
-	}(ch)
+	}(ch, ctx)
 }

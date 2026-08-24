@@ -17,19 +17,11 @@ type publicUserAccount struct {
 }
 
 type publicUserIdentity struct {
+	LastSeen time.Time
 	ID       string
 	UserID   string
 	UserName string
 	Accounts []publicUserAccount
-	LastSeen time.Time
-}
-
-func publicUserIdentityID(userID, userName string) string {
-	userID = strings.TrimSpace(userID)
-	if userID != "" {
-		return userID
-	}
-	return "name:" + strings.ToLower(strings.TrimSpace(userName))
 }
 
 func (m *Module) listPublicUserIdentities(ctx context.Context, pageSize int, cursorRaw string) ([]publicUserIdentity, string, error) {
@@ -78,7 +70,7 @@ func (m *Module) listPublicUserIdentities(ctx context.Context, pageSize int, cur
 	if err != nil {
 		return nil, "", err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	idents := make([]publicUserIdentity, 0)
 	for rows.Next() {
@@ -113,33 +105,6 @@ func (m *Module) listPublicUserIdentities(ctx context.Context, pageSize int, cur
 		idents[i].Accounts = accounts
 	}
 	return idents, nextCursor, nil
-}
-
-func (m *Module) listPublicUserAccounts(ctx context.Context, userID, userName string) ([]publicUserAccount, error) {
-	m.mu.RLock()
-	db := m.db
-	m.mu.RUnlock()
-	if db == nil {
-		return nil, fmt.Errorf("db not initialized")
-	}
-	rows, err := m.queryRows(ctx, `
-		SELECT DISTINCT server_id, server_type, user_id, user_name
-		FROM sessions
-		WHERE `+userIdentityMatchSQL("")+`
-		ORDER BY server_id ASC`, userID, userName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]publicUserAccount, 0)
-	for rows.Next() {
-		var acc publicUserAccount
-		if err := rows.Scan(&acc.ServerID, &acc.ServerType, &acc.ExternalUserID, &acc.Username); err != nil {
-			return nil, err
-		}
-		out = append(out, acc)
-	}
-	return out, rows.Err()
 }
 
 func (m *Module) getPublicUserIdentity(ctx context.Context, identityID string) (*publicUserIdentity, error) {
@@ -211,14 +176,13 @@ func (m *Module) publicUserStats(ctx context.Context, identityID string) (map[st
 		since := time.Now().UTC().AddDate(0, 0, -days).Format(time.RFC3339)
 		var plays int
 		var minutes float64
-		err := m.queryRow(ctx, `
+		if queryErr := m.queryRow(ctx, `
 			SELECT COUNT(1), COALESCE(SUM(position_seconds), 0) / 60.0
 			FROM sessions
 			WHERE state = 'stopped' AND started_at >= ? AND `+match,
 			append([]any{since}, resolvedID)...,
-		).Scan(&plays, &minutes)
-		if err != nil {
-			return nil, err
+		).Scan(&plays, &minutes); queryErr != nil {
+			return nil, queryErr
 		}
 		out[key] = userWindowStats{Plays: plays, WatchMinutes: minutes}
 	}

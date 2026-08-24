@@ -120,7 +120,7 @@ func (m *Module) queryLibraryStorageHistoryRows(ctx context.Context, db *sql.DB,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]libraryStorageHistoryPoint, 0)
 	for rows.Next() {
 		var p libraryStorageHistoryPoint

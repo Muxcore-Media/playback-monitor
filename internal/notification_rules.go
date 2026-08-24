@@ -21,17 +21,17 @@ type NotificationRuleFilters struct {
 }
 
 type NotificationRule struct {
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 	ID              string
 	Name            string
-	Enabled         bool
 	EventType       string
 	TitleTemplate   string
 	MessageTemplate string
 	Severity        string
-	Filters         NotificationRuleFilters
 	DestinationIDs  []string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	Filters         NotificationRuleFilters
+	Enabled         bool
 }
 
 func (m *Module) seedDefaultNotificationRules(ctx context.Context) error {
@@ -116,7 +116,7 @@ func (m *Module) listNotificationRules(ctx context.Context, eventType string) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanNotificationRules(rows)
 }
 
@@ -204,9 +204,9 @@ func (m *Module) upsertNotificationRule(ctx context.Context, rule NotificationRu
 	if err != nil {
 		return NotificationRule{}, err
 	}
-	rules, err := m.listNotificationRules(ctx, "")
-	if err != nil {
-		return rule, nil
+	rules, listErr := m.listNotificationRules(ctx, "")
+	if listErr != nil {
+		return NotificationRule{}, listErr
 	}
 	for _, r := range rules {
 		if r.ID == rule.ID {
