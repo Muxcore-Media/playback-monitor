@@ -23,9 +23,9 @@ func TestLibraryStorageHistoryAndPrediction(t *testing.T) {
 	day1 := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
 	day2 := time.Now().UTC().AddDate(0, 0, -5).Format("2006-01-02")
 	for _, row := range []struct {
-		day         string
-		bytes       int64
-		items       int
+		day   string
+		bytes int64
+		items int
 	}{
 		{day1, 1_000_000_000, 100},
 		{day2, 2_000_000_000, 120},

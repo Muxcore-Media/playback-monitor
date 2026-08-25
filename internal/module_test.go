@@ -95,7 +95,7 @@ func TestStreamAnalyticsAndUserStats(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	m := NewModule(Config{
-		DBPath: filepath.Join(dir, "monitor.db"),
+		DBPath:   filepath.Join(dir, "monitor.db"),
 		GRPCAddr: "127.0.0.1:0",
 		HTTPAddr: "127.0.0.1:0",
 	})
@@ -105,17 +105,17 @@ func TestStreamAnalyticsAndUserStats(t *testing.T) {
 	t.Cleanup(func() { _ = m.Stop(ctx) })
 
 	ev := SessionEvent{
-		EventType:           "playback.started",
-		ServerType:          "jellyfin",
-		ServerID:            "jf1",
-		ExternalSessionID:   "sess-analytics",
-		UserID:              "u1",
-		UserName:            "alice",
-		ItemID:              "item1",
-		Title:               "Movie A",
-		Platform:            "Android",
-		IsTranscode:         true,
-		PositionSeconds:     0,
+		EventType:         "playback.started",
+		ServerType:        "jellyfin",
+		ServerID:          "jf1",
+		ExternalSessionID: "sess-analytics",
+		UserID:            "u1",
+		UserName:          "alice",
+		ItemID:            "item1",
+		Title:             "Movie A",
+		Platform:          "Android",
+		IsTranscode:       true,
+		PositionSeconds:   0,
 	}
 	if _, _, err := m.ingestSessionEvent(ctx, ev); err != nil {
 		t.Fatalf("start: %v", err)

@@ -24,7 +24,7 @@ func TestPlaysByStreamResolution(t *testing.T) {
 		ev := SessionEvent{
 			EventType: "playback.started", ServerID: "s1",
 			ExternalSessionID: fmt.Sprintf("res-%d", i),
-			ItemID: fmt.Sprintf("item-%d", i), StreamResolution: res,
+			ItemID:            fmt.Sprintf("item-%d", i), StreamResolution: res,
 		}
 		if _, _, err := m.ingestSessionEvent(ctx, ev); err != nil {
 			t.Fatal(err)
