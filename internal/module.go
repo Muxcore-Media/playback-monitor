@@ -42,6 +42,11 @@ type Module struct {
 	id                   string
 	dbDialect            dbDialect
 	publicAPIKey         string
+	httpToken            string
+	geoIPMode            string
+	geoIPDBPath          string
+	historyRetentionDays int
+	activeSessionTimeout time.Duration
 	cfgMu                sync.RWMutex
 	mu                   sync.RWMutex
 	notifyOnSessionStart bool
@@ -80,8 +85,11 @@ func NewModule(cfg Config) *Module {
 	}
 	notifyStart := envTruthy(os.Getenv("PLAYBACK_MONITOR_NOTIFY_ON_START"))
 	notifyStop := envTruthy(os.Getenv("PLAYBACK_MONITOR_NOTIFY_ON_STOP"))
-	geoEnabled := envGeoIPEnabled(os.Getenv("PLAYBACK_MONITOR_GEOIP"))
+	geoMode, geoDB, geoEnabled := geoConfigFromEnv()
 	publicKey := strings.TrimSpace(os.Getenv("PLAYBACK_MONITOR_PUBLIC_API_KEY"))
+	httpToken := strings.TrimSpace(os.Getenv("PLAYBACK_MONITOR_HTTP_TOKEN"))
+	retentionDays := envIntDefault(os.Getenv("PLAYBACK_MONITOR_HISTORY_RETENTION_DAYS"), 0)
+	activeTimeout := envDurationDefault(os.Getenv("PLAYBACK_MONITOR_ACTIVE_TIMEOUT"), 15*time.Minute)
 	return &Module{
 		id:                   cfg.ID,
 		dbPath:               cfg.DBPath,
@@ -90,8 +98,13 @@ func NewModule(cfg Config) *Module {
 		stopCh:               make(chan struct{}),
 		notifyOnSessionStart: notifyStart,
 		notifyOnSessionStop:  notifyStop,
+		geoIPMode:            geoMode,
+		geoIPDBPath:          geoDB,
 		geoIPEnabled:         geoEnabled,
 		publicAPIKey:         publicKey,
+		httpToken:            httpToken,
+		historyRetentionDays: retentionDays,
+		activeSessionTimeout: activeTimeout,
 		liveHub:              newLiveHub(),
 	}
 }
@@ -117,6 +130,9 @@ func (m *Module) Info() contracts.ModuleInfo {
 func (m *Module) Init(ctx context.Context) error {
 	if err := m.initDB(ctx); err != nil {
 		return err
+	}
+	if err := m.loadDurableSettings(); err != nil {
+		slog.Warn("playback-monitor: load settings failed", "error", err)
 	}
 	var lc net.ListenConfig
 	lis, err := lc.Listen(ctx, "tcp", m.grpcAddr)
@@ -146,43 +162,48 @@ func (m *Module) Start(ctx context.Context) error {
 	}()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if err := m.Health(r.Context()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable","error":` + jsonString(err.Error()) + `}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
-	mux.HandleFunc("GET /sessions/active", m.handleListActive)
-	mux.HandleFunc("GET /history", m.handleListHistory)
-	mux.HandleFunc("GET /stats/home", m.handleHomeStats)
-	mux.HandleFunc("GET /stats/plays-by-date", m.handlePlaysByDateHTTP)
-	mux.HandleFunc("GET /stats/plays-by-hour", m.handlePlaysByHourHTTP)
-	mux.HandleFunc("GET /stats/plays-by-dow", m.handlePlaysByDayOfWeekHTTP)
-	mux.HandleFunc("GET /stats/plays-by-month", m.handlePlaysByMonthHTTP)
-	mux.HandleFunc("GET /stats/plays-by-stream-type", m.handlePlaysByStreamTypeHTTP)
-	mux.HandleFunc("GET /stats/plays-by-stream-resolution", m.handlePlaysByStreamResolutionHTTP)
-	mux.HandleFunc("GET /stats/plays-by-top-users", m.handlePlaysByTopUsersHTTP)
-	mux.HandleFunc("GET /stats/plays-by-top-platforms", m.handlePlaysByTopPlatformsHTTP)
-	mux.HandleFunc("GET /stats/plays-by-source-resolution", m.handlePlaysBySourceResolutionHTTP)
-	mux.HandleFunc("GET /stats/plays-by-platform-resolution", m.handlePlaysByPlatformResolutionHTTP)
-	mux.HandleFunc("GET /stats/concurrent-streams", m.handleConcurrentStreamsHTTP)
-	mux.HandleFunc("GET /stats/libraries", m.handleLibraryStatsHTTP)
-	mux.HandleFunc("GET /library/duplicates", m.handleLibraryDuplicatesHTTP)
-	mux.HandleFunc("GET /library/stale", m.handleLibraryStaleHTTP)
-	mux.HandleFunc("GET /library/storage", m.handleLibraryStorageHTTP)
-	mux.HandleFunc("GET /library/storage/history", m.handleLibraryStorageHistoryHTTP)
-	mux.HandleFunc("GET /stats/top-content", m.handleTopContentHTTP)
-	mux.HandleFunc("POST /ingest", m.handleIngestHTTP)
-	mux.HandleFunc("GET /notification/rules", m.handleListNotificationRules)
-	mux.HandleFunc("POST /notification/rules", m.handleUpsertNotificationRule)
-	mux.HandleFunc("PUT /notification/rules/{id}", m.handleUpsertNotificationRuleByID)
-	mux.HandleFunc("DELETE /notification/rules/{id}", m.handleDeleteNotificationRule)
-	mux.HandleFunc("GET /notification/destinations", m.handleListNotificationDestinations)
-	mux.HandleFunc("POST /notification/destinations", m.handleUpsertNotificationDestination)
-	mux.HandleFunc("POST /notification/destinations/{id}/test", m.handleTestNotificationDestination)
-	mux.HandleFunc("PUT /notification/destinations/{id}", m.handleUpsertNotificationDestinationByID)
-	mux.HandleFunc("DELETE /notification/destinations/{id}", m.handleDeleteNotificationDestination)
-	mux.HandleFunc("POST /import/tautulli", m.handleImportTautulliHTTP)
-	mux.HandleFunc("POST /import/jellystat", m.handleImportJellystatHTTP)
-	mux.HandleFunc("GET /events/streams", m.handleStreamEventsSSE)
+	mux.HandleFunc("GET /sessions/active", m.withOperatorAuth(m.handleListActive))
+	mux.HandleFunc("GET /history", m.withOperatorAuth(m.handleListHistory))
+	mux.HandleFunc("GET /stats/home", m.withOperatorAuth(m.handleHomeStats))
+	mux.HandleFunc("GET /stats/plays-by-date", m.withOperatorAuth(m.handlePlaysByDateHTTP))
+	mux.HandleFunc("GET /stats/plays-by-hour", m.withOperatorAuth(m.handlePlaysByHourHTTP))
+	mux.HandleFunc("GET /stats/plays-by-dow", m.withOperatorAuth(m.handlePlaysByDayOfWeekHTTP))
+	mux.HandleFunc("GET /stats/plays-by-month", m.withOperatorAuth(m.handlePlaysByMonthHTTP))
+	mux.HandleFunc("GET /stats/plays-by-stream-type", m.withOperatorAuth(m.handlePlaysByStreamTypeHTTP))
+	mux.HandleFunc("GET /stats/plays-by-stream-resolution", m.withOperatorAuth(m.handlePlaysByStreamResolutionHTTP))
+	mux.HandleFunc("GET /stats/plays-by-top-users", m.withOperatorAuth(m.handlePlaysByTopUsersHTTP))
+	mux.HandleFunc("GET /stats/plays-by-top-platforms", m.withOperatorAuth(m.handlePlaysByTopPlatformsHTTP))
+	mux.HandleFunc("GET /stats/plays-by-source-resolution", m.withOperatorAuth(m.handlePlaysBySourceResolutionHTTP))
+	mux.HandleFunc("GET /stats/plays-by-platform-resolution", m.withOperatorAuth(m.handlePlaysByPlatformResolutionHTTP))
+	mux.HandleFunc("GET /stats/concurrent-streams", m.withOperatorAuth(m.handleConcurrentStreamsHTTP))
+	mux.HandleFunc("GET /stats/libraries", m.withOperatorAuth(m.handleLibraryStatsHTTP))
+	mux.HandleFunc("GET /library/duplicates", m.withOperatorAuth(m.handleLibraryDuplicatesHTTP))
+	mux.HandleFunc("GET /library/stale", m.withOperatorAuth(m.handleLibraryStaleHTTP))
+	mux.HandleFunc("GET /library/storage", m.withOperatorAuth(m.handleLibraryStorageHTTP))
+	mux.HandleFunc("GET /library/storage/history", m.withOperatorAuth(m.handleLibraryStorageHistoryHTTP))
+	mux.HandleFunc("GET /stats/top-content", m.withOperatorAuth(m.handleTopContentHTTP))
+	mux.HandleFunc("POST /ingest", m.withOperatorAuth(m.handleIngestHTTP))
+	mux.HandleFunc("GET /notification/rules", m.withOperatorAuth(m.handleListNotificationRules))
+	mux.HandleFunc("POST /notification/rules", m.withOperatorAuth(m.handleUpsertNotificationRule))
+	mux.HandleFunc("PUT /notification/rules/{id}", m.withOperatorAuth(m.handleUpsertNotificationRuleByID))
+	mux.HandleFunc("DELETE /notification/rules/{id}", m.withOperatorAuth(m.handleDeleteNotificationRule))
+	mux.HandleFunc("GET /notification/destinations", m.withOperatorAuth(m.handleListNotificationDestinations))
+	mux.HandleFunc("POST /notification/destinations", m.withOperatorAuth(m.handleUpsertNotificationDestination))
+	mux.HandleFunc("POST /notification/destinations/{id}/test", m.withOperatorAuth(m.handleTestNotificationDestination))
+	mux.HandleFunc("PUT /notification/destinations/{id}", m.withOperatorAuth(m.handleUpsertNotificationDestinationByID))
+	mux.HandleFunc("DELETE /notification/destinations/{id}", m.withOperatorAuth(m.handleDeleteNotificationDestination))
+	mux.HandleFunc("POST /import/tautulli", m.withOperatorAuth(m.handleImportTautulliHTTP))
+	mux.HandleFunc("POST /import/jellystat", m.withOperatorAuth(m.handleImportJellystatHTTP))
+	mux.HandleFunc("GET /events/streams", m.withOperatorAuth(m.handleStreamEventsSSE))
 	mux.HandleFunc("GET /api/v2/public/docs", m.handlePublicDocs)
 	mux.HandleFunc("GET /api/v2/public/health", m.handlePublicHealth)
 	mux.HandleFunc("GET /api/v2/public/servers", m.handlePublicServers)
@@ -224,6 +245,7 @@ func (m *Module) Start(ctx context.Context) error {
 	}()
 
 	go m.connectCoreAndSubscribe(ctx) //nolint:gosec // module lifecycle goroutine outlives Start call
+	go m.historyRetentionLoop(ctx)    //nolint:gosec // module lifecycle goroutine outlives Start call
 	return nil
 }
 
@@ -270,7 +292,7 @@ func (m *Module) connectCoreAndSubscribe(ctx context.Context) {
 		return
 	}
 	var opts []client.Option
-	if os.Getenv("MUXCORE_INSECURE_DISABLE_TLS") == "true" || os.Getenv("MUXCORE_GRPC_INSECURE") == "true" {
+	if meshInsecure() {
 		opts = append(opts, client.WithInsecure())
 	}
 	backoff := time.Second
@@ -283,10 +305,8 @@ func (m *Module) connectCoreAndSubscribe(ctx context.Context) {
 		c, err := client.Dial(addr, opts...)
 		if err != nil {
 			slog.Warn("playback-monitor: dial core failed, retrying", "error", err, "backoff", backoff)
-			select {
-			case <-m.stopCh:
+			if !sleepUntilStop(m.stopCh, backoff) {
 				return
-			case <-time.After(backoff):
 			}
 			if backoff < 30*time.Second {
 				backoff *= 2
@@ -300,37 +320,76 @@ func (m *Module) connectCoreAndSubscribe(ctx context.Context) {
 		m.mc = c
 		m.mu.Unlock()
 		slog.Info("playback-monitor: connected to core mesh", "addr", addr)
-		m.subscribePlaybackEvents(ctx)
-		m.subscribeLibraryCatalogEvents(ctx)
-		m.subscribeGuardViolationEvents(ctx)
-		return
+		backoff = time.Second
+		m.runMeshSubscriptions(ctx)
+		select {
+		case <-m.stopCh:
+			return
+		default:
+		}
+		slog.Warn("playback-monitor: mesh event subscriptions ended, reconnecting")
+		if !sleepUntilStop(m.stopCh, backoff) {
+			return
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
 	}
 }
 
-func (m *Module) eventClient() *client.Client {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.mc
-}
-
-func (m *Module) subscribePlaybackEvents(ctx context.Context) {
+func (m *Module) runMeshSubscriptions(ctx context.Context) {
 	mc := m.eventClient()
 	if mc == nil {
 		return
 	}
+	var wg sync.WaitGroup
+	active := 0
 	for _, et := range []string{events.EventPlaybackStarted, events.EventPlaybackProgress, events.EventPlaybackStopped} {
 		ch, cancel, err := mc.Events.Subscribe(ctx, et)
 		if err != nil {
 			slog.Debug("playback-monitor: subscribe failed", "type", et, "error", err)
 			continue
 		}
-		go func(events <-chan *eventsv1.Event, eventType string, cancel context.CancelFunc, runCtx context.Context) {
+		active++
+		wg.Add(1)
+		go func(events <-chan *eventsv1.Event, eventType string, cancel context.CancelFunc) {
+			defer wg.Done()
 			defer cancel()
 			for evt := range events {
-				m.handlePlaybackEvent(runCtx, eventType, evt)
+				m.handlePlaybackEvent(ctx, eventType, evt)
 			}
-		}(ch, et, cancel, ctx)
+		}(ch, et, cancel)
 	}
+	if ch, cancel, err := mc.Events.Subscribe(ctx, "playback.library.item"); err == nil {
+		active++
+		wg.Add(1)
+		go func(events <-chan *eventsv1.Event, cancel context.CancelFunc) {
+			defer wg.Done()
+			defer cancel()
+			for evt := range events {
+				m.handleLibraryItemEvent(ctx, evt)
+			}
+		}(ch, cancel)
+	} else {
+		slog.Debug("playback-monitor: subscribe library catalog failed", "error", err)
+	}
+	if ch, cancel, err := mc.Events.Subscribe(ctx, "playback.guard.violation"); err == nil {
+		active++
+		wg.Add(1)
+		go func(events <-chan *eventsv1.Event, cancel context.CancelFunc) {
+			defer wg.Done()
+			defer cancel()
+			for evt := range events {
+				m.handleGuardViolationEvent(ctx, evt)
+			}
+		}(ch, cancel)
+	} else {
+		slog.Debug("playback-monitor: subscribe guard violations failed", "error", err)
+	}
+	if active == 0 {
+		return
+	}
+	wg.Wait()
 }
 
 func (m *Module) handlePlaybackEvent(ctx context.Context, eventType string, evt *eventsv1.Event) {
@@ -363,4 +422,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func (m *Module) eventClient() *client.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.mc
 }

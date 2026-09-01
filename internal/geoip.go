@@ -5,11 +5,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/oschwald/geoip2-golang"
 )
 
 type geoLocation struct {
@@ -21,10 +24,36 @@ type geoLocation struct {
 }
 
 var (
-	geoAttrRE  = regexp.MustCompile(`(\w+)="([^"]*)"`)
-	geoCacheMu sync.RWMutex
-	geoCache   = map[string]geoLocation{}
+	geoAttrRE   = regexp.MustCompile(`(\w+)="([^"]*)"`)
+	geoCacheMu  sync.RWMutex
+	geoCache    = map[string]geoLocation{}
+	geoDBMu     sync.RWMutex
+	geoDBReader *geoip2.Reader
+	geoDBLoaded string
 )
+
+func geoConfigFromEnv() (mode, dbPath string, enabled bool) {
+	dbPath = strings.TrimSpace(os.Getenv("PLAYBACK_MONITOR_GEOIP_DB"))
+	raw := strings.TrimSpace(os.Getenv("PLAYBACK_MONITOR_GEOIP"))
+	if strings.EqualFold(raw, "plex") {
+		return "plex", dbPath, true
+	}
+	if dbPath != "" {
+		return "mmdb", dbPath, true
+	}
+	return "", dbPath, false
+}
+
+func normalizeGeoIPMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "plex":
+		return "plex"
+	case "mmdb", "maxmind", "db":
+		return "mmdb"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
 
 func (m *Module) enrichSessionGeo(ctx context.Context, ev *SessionEvent) {
 	if !m.geoIPEnabled || ev == nil {
@@ -55,11 +84,83 @@ func (m *Module) lookupGeo(ctx context.Context, ip string) geoLocation {
 	}
 	geoCacheMu.RUnlock()
 
-	loc := lookupPlexGeoIP(ctx, ip)
+	m.cfgMu.RLock()
+	mode := m.geoIPMode
+	dbPath := m.geoIPDBPath
+	m.cfgMu.RUnlock()
+	if mode == "" && dbPath != "" {
+		mode = "mmdb"
+	}
+
+	var loc geoLocation
+	switch mode {
+	case "plex":
+		loc = lookupPlexGeoIP(ctx, ip)
+	default:
+		loc = lookupMMDBGeoIP(dbPath, ip)
+	}
 	geoCacheMu.Lock()
 	geoCache[ip] = loc
 	geoCacheMu.Unlock()
 	return loc
+}
+
+func lookupMMDBGeoIP(dbPath, ip string) geoLocation {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" {
+		return geoLocation{}
+	}
+	reader, err := geoipReader(dbPath)
+	if err != nil {
+		return geoLocation{}
+	}
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return geoLocation{}
+	}
+	record, err := reader.City(parsed)
+	if err != nil {
+		return geoLocation{}
+	}
+	loc := geoLocation{
+		CountryCode: record.Country.IsoCode,
+		Country:     record.Country.Names["en"],
+		City:        record.City.Names["en"],
+		Lat:         record.Location.Latitude,
+		Lon:         record.Location.Longitude,
+	}
+	if loc.Country == "" && loc.CountryCode != "" {
+		loc.Country = loc.CountryCode
+	}
+	return loc
+}
+
+func geoipReader(dbPath string) (*geoip2.Reader, error) {
+	geoDBMu.RLock()
+	if geoDBReader != nil && geoDBLoaded == dbPath {
+		r := geoDBReader
+		geoDBMu.RUnlock()
+		return r, nil
+	}
+	geoDBMu.RUnlock()
+
+	geoDBMu.Lock()
+	defer geoDBMu.Unlock()
+	if geoDBReader != nil && geoDBLoaded == dbPath {
+		return geoDBReader, nil
+	}
+	if geoDBReader != nil {
+		_ = geoDBReader.Close()
+		geoDBReader = nil
+		geoDBLoaded = ""
+	}
+	reader, err := geoip2.Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	geoDBReader = reader
+	geoDBLoaded = dbPath
+	return reader, nil
 }
 
 func lookupPlexGeoIP(ctx context.Context, ip string) geoLocation {
@@ -154,11 +255,26 @@ func geoUpdateArgs(ev SessionEvent) []any {
 	return []any{ev.GeoCountry, ev.GeoCity, ev.GeoLat, ev.GeoLat, ev.GeoLon, ev.GeoLon}
 }
 
-func envGeoIPEnabled(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "plex", "on":
-		return true
-	default:
-		return false
+func envIntDefault(raw string, def int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def
 	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func envDurationDefault(raw string, def time.Duration) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return def
+	}
+	return d
 }

@@ -27,6 +27,7 @@ service PlaybackMonitorService {
   rpc MergeUserIdentity(MergeUserIdentityRequest) returns (MergeUserIdentityResponse);
   rpc ImportTautulliHistory(ImportTautulliHistoryRequest) returns (ImportTautulliHistoryResponse);
   rpc ImportJellystatHistory(ImportJellystatHistoryRequest) returns (ImportJellystatHistoryResponse);
+  rpc DeleteUserHistory(DeleteUserHistoryRequest) returns (DeleteUserHistoryResponse);
   rpc ListLibraryStats(ListLibraryStatsRequest) returns (ListLibraryStatsResponse);
   rpc ListLibraryDuplicates(ListLibraryDuplicatesRequest) returns (ListLibraryDuplicatesResponse);
   rpc ListStaleLibraryItems(ListStaleLibraryItemsRequest) returns (ListStaleLibraryItemsResponse);
@@ -391,6 +392,14 @@ message ImportJellystatHistoryResponse {
   int32 failed = 3;
   int32 total_fetched = 4;
   string error = 5;
+}
+
+message DeleteUserHistoryRequest {
+  string identity_id = 1;
+}
+
+message DeleteUserHistoryResponse {
+  int64 deleted = 1;
 }
 
 message LibraryStat {

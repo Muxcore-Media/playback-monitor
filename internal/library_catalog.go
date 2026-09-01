@@ -146,20 +146,3 @@ func (m *Module) handleLibraryItemEvent(ctx context.Context, evt *eventsv1.Event
 		_ = err
 	}
 }
-
-func (m *Module) subscribeLibraryCatalogEvents(ctx context.Context) {
-	mc := m.eventClient()
-	if mc == nil {
-		return
-	}
-	ch, cancel, err := mc.Events.Subscribe(ctx, "playback.library.item")
-	if err != nil {
-		return
-	}
-	go func(events <-chan *eventsv1.Event, runCtx context.Context) {
-		defer cancel()
-		for evt := range events {
-			m.handleLibraryItemEvent(runCtx, evt)
-		}
-	}(ch, ctx)
-}

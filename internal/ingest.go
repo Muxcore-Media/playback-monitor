@@ -304,6 +304,9 @@ func (m *Module) listActiveSessions(ctx context.Context, serverID string, limit 
 	if db == nil {
 		return nil, fmt.Errorf("db not initialized")
 	}
+	if err := m.expireStaleActiveSessions(ctx, db, serverID); err != nil {
+		return nil, err
+	}
 	query := `SELECT ` + sessionSelectCols + `
 		FROM sessions WHERE state IN ('playing','paused')`
 	args := []any{}
@@ -314,6 +317,24 @@ func (m *Module) listActiveSessions(ctx context.Context, serverID string, limit 
 	query += ` ORDER BY last_progress_at DESC LIMIT ?`
 	args = append(args, limit)
 	return m.querySessions(ctx, db, query, args...)
+}
+
+func (m *Module) expireStaleActiveSessions(ctx context.Context, db *sql.DB, serverID string) error {
+	timeout := m.configuredActiveTimeout()
+	if timeout <= 0 {
+		return nil
+	}
+	cutoff := time.Now().UTC().Add(-timeout).Format(time.RFC3339)
+	query := `
+		UPDATE sessions SET state = 'stopped', stopped_at = last_progress_at
+		WHERE state IN ('playing','paused') AND last_progress_at != '' AND last_progress_at < ?`
+	args := []any{cutoff}
+	if strings.TrimSpace(serverID) != "" {
+		query += ` AND server_id = ?`
+		args = append(args, serverID)
+	}
+	_, err := m.exec(ctx, query, args...)
+	return err
 }
 
 func (m *Module) listHistory(ctx context.Context, serverID, userID, q string, limit, offset int) ([]SessionRecord, int, error) {

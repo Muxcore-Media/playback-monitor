@@ -2,6 +2,8 @@ package internal
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -120,6 +122,18 @@ func TestImportTautulliDryRun(t *testing.T) {
 	}
 	if total != 0 {
 		t.Fatalf("dry run should not persist, total=%d", total)
+	}
+}
+
+func TestFetchTautulliHistoryPageRejectsMetadataURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "should not reach metadata server", http.StatusTeapot)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, _, err := fetchTautulliHistoryPage(context.Background(), "http://169.254.169.254/", "key", 0, 10)
+	if err == nil {
+		t.Fatal("expected metadata url to be refused before dial")
 	}
 }
 

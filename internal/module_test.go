@@ -3,8 +3,11 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPlaybackMonitorIngestLifecycle(t *testing.T) {
@@ -298,5 +301,165 @@ func TestItemWatchStatsAggregation(t *testing.T) {
 	}
 	if len(users) != 2 {
 		t.Fatalf("users %v", users)
+	}
+}
+
+func TestOperatorHTTPAuth(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	m.httpToken = "secret-token"
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(ctx) })
+
+	unauth := httptest.NewRecorder()
+	m.withOperatorAuth(m.handleListActive)(unauth, httptest.NewRequest(http.MethodGet, "/sessions/active", http.NoBody))
+	if unauth.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauth.Code)
+	}
+
+	auth := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sessions/active", http.NoBody)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	m.withOperatorAuth(m.handleListActive)(auth, req)
+	if auth.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", auth.Code, auth.Body.String())
+	}
+}
+
+func TestHealthzRequiresDatabase(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	ok := httptest.NewRecorder()
+	m.Health(ctx)
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := m.Health(r.Context()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+	handler(ok, httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody))
+	if ok.Code != http.StatusOK {
+		t.Fatalf("expected ok health, got %d", ok.Code)
+	}
+
+	_ = m.Stop(ctx)
+	m.mu.Lock()
+	m.db = nil
+	m.mu.Unlock()
+	fail := httptest.NewRecorder()
+	handler(fail, httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody))
+	if fail.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", fail.Code)
+	}
+}
+
+func TestActiveSessionTimeoutExpiresGhost(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	m.activeSessionTimeout = time.Minute
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(ctx) })
+
+	stale := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339)
+	_, err := m.exec(ctx, `
+		INSERT INTO sessions(
+			id, server_id, server_type, external_session_id, state, user_id, user_name, item_id, title,
+			started_at, last_progress_at, position_seconds, duration_seconds, is_transcode, source_module
+		) VALUES (?, 'default', 'jellyfin', 'ghost', 'playing', 'u1', 'alice', 'item', 'Movie', ?, ?, 10, 100, 0, 'test')`,
+		"ghost-id", stale, stale,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	active, err := m.listActiveSessions(ctx, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("expected ghost expired, got %d active", len(active))
+	}
+}
+
+func TestHistoryRetentionAndDeleteUserHistory(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	m.historyRetentionDays = 30
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(ctx) })
+
+	oldStop := time.Now().UTC().AddDate(0, 0, -40).Format(time.RFC3339)
+	_, err := m.exec(ctx, `
+		INSERT INTO sessions(
+			id, server_id, server_type, external_session_id, state, user_id, user_name, identity_id, item_id, title,
+			started_at, stopped_at, last_progress_at, position_seconds, duration_seconds, is_transcode, source_module
+		) VALUES (?, 'default', 'jellyfin', 'old', 'stopped', 'u1', 'alice', 'ident-1', 'item', 'Old', ?, ?, ?, 10, 100, 0, 'test')`,
+		"old-id", oldStop, oldStop, oldStop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.sweepExpiredHistory(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := m.queryRow(ctx, `SELECT COUNT(1) FROM sessions WHERE id = 'old-id'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("expected retention sweep to delete old session")
+	}
+
+	recent := time.Now().UTC().Format(time.RFC3339)
+	for i := 0; i < 2; i++ {
+		_, err := m.exec(ctx, `
+			INSERT INTO sessions(
+				id, server_id, server_type, external_session_id, state, user_id, user_name, identity_id, item_id, title,
+				started_at, stopped_at, last_progress_at, position_seconds, duration_seconds, is_transcode, source_module
+			) VALUES (?, 'default', 'jellyfin', ?, 'stopped', 'u1', 'alice', 'ident-2', 'item', 'Recent', ?, ?, ?, 10, 100, 0, 'test')`,
+			fmt.Sprintf("recent-%d", i), fmt.Sprintf("ext-%d", i), recent, recent, recent,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	deleted, err := m.deleteUserHistory(ctx, "ident-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 2 {
+		t.Fatalf("expected 2 deleted, got %d", deleted)
 	}
 }

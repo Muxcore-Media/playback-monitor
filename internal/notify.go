@@ -9,8 +9,6 @@ import (
 
 	notificationv1 "github.com/Muxcore-Media/contracts-notification/muxcore/notification/v1"
 	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func (m *Module) findCapabilityAddr(ctx context.Context, capability string) (string, error) {
@@ -100,7 +98,7 @@ func (m *Module) postNotification(ctx context.Context, title, message, severity 
 	if err != nil {
 		return
 	}
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := dialPeer(addr)
 	if err != nil {
 		return
 	}
@@ -109,10 +107,23 @@ func (m *Module) postNotification(ctx context.Context, title, message, severity 
 	_, _ = cli.Notify(ctx, &notificationv1.NotifyRequest{
 		Title:        title,
 		Message:      message,
-		Severity:     severity,
+		Severity:     severityFromString(severity),
 		SourceModule: m.id,
 		Fields:       fields,
 	})
+}
+
+func severityFromString(raw string) notificationv1.Severity {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "success":
+		return notificationv1.Severity_SEVERITY_SUCCESS
+	case "warning", "warn":
+		return notificationv1.Severity_SEVERITY_WARNING
+	case "error", "critical":
+		return notificationv1.Severity_SEVERITY_ERROR
+	default:
+		return notificationv1.Severity_SEVERITY_INFO
+	}
 }
 
 func (m *Module) getNotifyOnSessionStart() bool {

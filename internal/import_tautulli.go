@@ -298,7 +298,11 @@ func fetchAllTautulliHistory(ctx context.Context, baseURL, apiKey string, maxRec
 }
 
 func fetchTautulliHistoryPage(ctx context.Context, baseURL, apiKey string, start, length int) ([]map[string]any, int, error) {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	u, err := validateOutboundHTTPURL(baseURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("tautulli url: %w", err)
+	}
+	base := strings.TrimRight(strings.TrimSpace(u.String()), "/")
 	q := url.Values{}
 	q.Set("apikey", apiKey)
 	q.Set("cmd", "get_history")
