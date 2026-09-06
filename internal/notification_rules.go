@@ -236,7 +236,7 @@ func (m *Module) deleteNotificationRule(ctx context.Context, id string) error {
 
 func isAllowedNotificationEventType(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case playbackevents.EventPlaybackStarted, playbackevents.EventPlaybackStopped, "guard.violation":
+	case playbackevents.EventPlaybackStarted, playbackevents.EventPlaybackStopped, "guard.violation", EventRequestReady:
 		return true
 	default:
 		return false
@@ -327,6 +327,20 @@ func notificationRuleMatchesGuard(rule NotificationRule, payload guardViolationP
 	return true
 }
 
+func notificationRuleMatchesRequestReady(rule NotificationRule, payload requestReadyPayload) bool {
+	f := rule.Filters
+	if f.TranscodeOnly || f.MinDurationSec > 0 || len(f.Platforms) > 0 {
+		return false
+	}
+	if len(f.UserIDs) > 0 && !containsFold(f.UserIDs, payload.RequestedBy) {
+		return false
+	}
+	if len(f.MediaTypes) > 0 && !containsFold(f.MediaTypes, payload.ItemType) {
+		return false
+	}
+	return true
+}
+
 func containsFold(list []string, value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -364,6 +378,19 @@ func guardNotificationVars(payload guardViolationPayload) map[string]string {
 		"user":      payload.User,
 		"summary":   payload.Summary,
 		"rule_type": payload.RuleType,
+	}
+}
+
+func requestReadyNotificationVars(payload requestReadyPayload) map[string]string {
+	title := firstNonEmptyStr(payload.Title, payload.ItemID, payload.RequestID)
+	return map[string]string{
+		"request_id":   payload.RequestID,
+		"requested_by": payload.RequestedBy,
+		"title":        title,
+		"year":         payload.Year,
+		"item_type":    payload.ItemType,
+		"tmdb_id":      payload.TMDBID,
+		"item_id":      payload.ItemID,
 	}
 }
 

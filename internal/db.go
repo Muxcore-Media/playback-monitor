@@ -225,6 +225,10 @@ func schemaStatements() []string {
 		 updated_at TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS notification_destinations_enabled_idx ON notification_destinations(enabled)`,
+		`CREATE TABLE IF NOT EXISTS request_ready_dispatched (
+			request_id TEXT PRIMARY KEY,
+			dispatched_at TEXT NOT NULL
+		)`,
 	}
 }
 
