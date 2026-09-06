@@ -80,6 +80,7 @@ Admin playback UI proxies operator HTTP via authenticated routes:
 - `playback.started`, `playback.progress`, `playback.stopped`
 - `playback.library.item`
 - `playback.guard.violation`
+- `media.request.ready` — user-requested title became playable (`has_file`). Dispatched to matching Discord/webhook destinations; **deduped by `request_id`**. Emitted by **request-media** when a linked library item gains a file (not `status=available`). Unconfigured destinations are a quiet no-op.
 
 Subscriptions reconnect automatically after core restarts.
 
