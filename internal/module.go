@@ -386,6 +386,19 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 	} else {
 		slog.Debug("playback-monitor: subscribe guard violations failed", "error", err)
 	}
+	if ch, cancel, err := mc.Events.Subscribe(ctx, EventRequestReady); err == nil {
+		active++
+		wg.Add(1)
+		go func(events <-chan *eventsv1.Event, cancel context.CancelFunc) {
+			defer wg.Done()
+			defer cancel()
+			for evt := range events {
+				m.handleRequestReadyEvent(ctx, evt)
+			}
+		}(ch, cancel)
+	} else {
+		slog.Debug("playback-monitor: subscribe request ready failed", "error", err)
+	}
 	if active == 0 {
 		return
 	}
