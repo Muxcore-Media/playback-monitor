@@ -25,7 +25,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const moduleVersion = "0.1.0"
+const moduleVersion = "0.1.1"
 
 type Module struct {
 	monitorv1.UnimplementedPlaybackMonitorServiceServer
@@ -172,8 +172,10 @@ func (m *Module) Start(ctx context.Context) error {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("GET /sessions/active", m.withOperatorAuth(m.handleListActive))
+	mux.HandleFunc("POST /sessions/{id}/stop", m.withOperatorAuth(m.handleStopSession))
 	mux.HandleFunc("GET /history", m.withOperatorAuth(m.handleListHistory))
 	mux.HandleFunc("GET /stats/home", m.withOperatorAuth(m.handleHomeStats))
+	mux.HandleFunc("GET /stats/item", m.withOperatorAuth(m.handleItemStatsHTTP))
 	mux.HandleFunc("GET /stats/plays-by-date", m.withOperatorAuth(m.handlePlaysByDateHTTP))
 	mux.HandleFunc("GET /stats/plays-by-hour", m.withOperatorAuth(m.handlePlaysByHourHTTP))
 	mux.HandleFunc("GET /stats/plays-by-dow", m.withOperatorAuth(m.handlePlaysByDayOfWeekHTTP))
@@ -191,7 +193,7 @@ func (m *Module) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /library/storage", m.withOperatorAuth(m.handleLibraryStorageHTTP))
 	mux.HandleFunc("GET /library/storage/history", m.withOperatorAuth(m.handleLibraryStorageHistoryHTTP))
 	mux.HandleFunc("GET /stats/top-content", m.withOperatorAuth(m.handleTopContentHTTP))
-	mux.HandleFunc("POST /ingest", m.withOperatorAuth(m.handleIngestHTTP))
+	mux.HandleFunc("POST /ingest", m.withIngestAuth(m.handleIngestHTTP))
 	mux.HandleFunc("GET /notification/rules", m.withOperatorAuth(m.handleListNotificationRules))
 	mux.HandleFunc("POST /notification/rules", m.withOperatorAuth(m.handleUpsertNotificationRule))
 	mux.HandleFunc("PUT /notification/rules/{id}", m.withOperatorAuth(m.handleUpsertNotificationRuleByID))

@@ -2,13 +2,32 @@ package internal
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
 )
+
+func (m *Module) handleStopSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rec, err := m.operatorStopSession(r.Context(), r.PathValue("id"))
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "id required") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": rec, "stopped": true})
+}
 
 func (m *Module) handleListActive(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -29,6 +48,41 @@ func (m *Module) handleListHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": rows, "total": total})
+}
+
+func (m *Module) handleItemStatsHTTP(w http.ResponseWriter, r *http.Request) {
+	itemID := strings.TrimSpace(r.URL.Query().Get("item_id"))
+	if itemID == "" {
+		itemID = strings.TrimSpace(r.URL.Query().Get("id"))
+	}
+	if itemID == "" {
+		http.Error(w, "item_id required", http.StatusBadRequest)
+		return
+	}
+	runtime, _ := strconv.Atoi(r.URL.Query().Get("runtime"))
+	ws, err := m.itemWatchStats(r.Context(), itemID, runtime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	lastWatched := ""
+	if !ws.LastWatchedAt.IsZero() {
+		lastWatched = ws.LastWatchedAt.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"item_id":                    itemID,
+		"play_count":                 ws.PlayCount,
+		"view_count":                 ws.ViewCount,
+		"unique_users":               ws.UniqueUsers,
+		"watch_minutes":              ws.TotalDurationMinutes,
+		"longest_minutes":            ws.LongestDurationMinutes,
+		"has_activity":               ws.HasActivity,
+		"never_watched":              ws.NeverWatched,
+		"days_since_last_watch":      ws.DaysSinceLastWatch,
+		"last_watched_at":            lastWatched,
+		"user_watched_percent":       ws.UserWatchedPercent,
+		"user_watched_duration_minutes": ws.UserDurationMinutes,
+	})
 }
 
 func (m *Module) handleHomeStats(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +313,10 @@ func (m *Module) handleIngestHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, created, err := m.ingestSessionEvent(r.Context(), ev)
+	if errors.Is(err, errSessionKicked) {
+		writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "created": false, "stopped": true})
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

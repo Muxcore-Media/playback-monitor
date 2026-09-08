@@ -198,6 +198,7 @@ func schemaStatements() []string {
 		`ALTER TABLE library_items ADD COLUMN parent_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN identity_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN play_method TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN kicked INTEGER NOT NULL DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS sessions_identity_idx ON sessions(identity_id, started_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS notification_rules (
 			id TEXT PRIMARY KEY,

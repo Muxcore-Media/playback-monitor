@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"net"
 	"net/http"
 	"strings"
 )
@@ -45,4 +46,28 @@ func (m *Module) withOperatorAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// withIngestAuth allows household BFF ingest from loopback without a token
+// (run-host mediauiprox → :8560). Non-loopback clients still need the operator token.
+func (m *Module) withIngestAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if isLoopbackHTTP(r) {
+			next(w, r)
+			return
+		}
+		if !m.requireOperatorHTTPAuth(w, r) {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func isLoopbackHTTP(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
