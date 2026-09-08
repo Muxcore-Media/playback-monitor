@@ -47,6 +47,8 @@ type SessionEvent struct {
 	IsPaused          bool
 }
 
+var errSessionKicked = errors.New("session kicked")
+
 type SessionRecord struct {
 	StartedAt         time.Time
 	LastProgressAt    time.Time
@@ -211,6 +213,9 @@ func (m *Module) progressSession(ctx context.Context, db *sql.DB, ev SessionEven
 		serverID, externalID,
 	).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		if kickedID, kicked := m.latestKickedSession(ctx, serverID, externalID); kicked {
+			return kickedID, false, errSessionKicked
+		}
 		return m.startSession(ctx, db, ev, serverID, strings.TrimSpace(ev.ServerType), externalID, nowStr)
 	}
 	if err != nil {
@@ -289,6 +294,63 @@ func (m *Module) stopSession(ctx context.Context, db *sql.DB, ev SessionEvent, s
 		ev.Title, ev.StreamResolution, id,
 	)
 	return id, false, err
+}
+
+func validSessionID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" || len(id) > 80 {
+		return false
+	}
+	for _, c := range id {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Module) latestKickedSession(ctx context.Context, serverID, externalID string) (string, bool) {
+	var id string
+	var kicked int
+	err := m.queryRow(ctx,
+		`SELECT id, COALESCE(kicked, 0) FROM sessions WHERE server_id = ? AND external_session_id = ? ORDER BY started_at DESC LIMIT 1`,
+		serverID, externalID,
+	).Scan(&id, &kicked)
+	if err != nil || id == "" || kicked == 0 {
+		return "", false
+	}
+	return id, true
+}
+
+func (m *Module) operatorStopSession(ctx context.Context, rawID string) (SessionRecord, error) {
+	id := strings.TrimSpace(rawID)
+	if !validSessionID(id) {
+		return SessionRecord{}, fmt.Errorf("session id required")
+	}
+	m.mu.RLock()
+	db := m.db
+	m.mu.RUnlock()
+	if db == nil {
+		return SessionRecord{}, fmt.Errorf("db not initialized")
+	}
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	res, err := m.exec(ctx, `
+		UPDATE sessions SET state = 'stopped', kicked = 1, stopped_at = ?, last_progress_at = ?
+		WHERE id = ?`, nowStr, nowStr, id)
+	if err != nil {
+		return SessionRecord{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return SessionRecord{}, fmt.Errorf("session not found")
+	}
+	rows, err := m.querySessions(ctx, db, `SELECT `+sessionSelectCols+` FROM sessions WHERE id = ? LIMIT 1`, id)
+	if err != nil {
+		return SessionRecord{}, err
+	}
+	if len(rows) == 0 {
+		return SessionRecord{}, fmt.Errorf("session not found")
+	}
+	return rows[0], nil
 }
 
 func (m *Module) listActiveSessions(ctx context.Context, serverID string, limit int) ([]SessionRecord, error) {

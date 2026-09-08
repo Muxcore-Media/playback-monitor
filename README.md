@@ -22,7 +22,7 @@ Durable operator settings (notify flags, geoip, public API key, retention) persi
 |-----|---------|-------|
 | `PLAYBACK_MONITOR_GRPC_ADDR` | `:9560` | gRPC (`PlaybackMonitorService`) |
 | `PLAYBACK_MONITOR_HTTP_ADDR` | `:8560` | Operator HTTP + public v2 |
-| `PLAYBACK_MONITOR_HTTP_TOKEN` | unset | **Required** for operator HTTP (`Authorization: Bearer …` or `X-Playback-Monitor-Token`). Routes return `503` when unset. |
+| `PLAYBACK_MONITOR_HTTP_TOKEN` | unset | **Required** for operator HTTP from non-loopback clients (`Authorization: Bearer …` or `X-Playback-Monitor-Token`). Routes return `503` when unset. `POST /ingest` from loopback (run-host media-ui) is allowed without a token. |
 | `PLAYBACK_MONITOR_PUBLIC_API_KEY` | unset | Bearer token for `/api/v2/public/*` (`503` when unset) |
 | `MUXCORE_GRPC_ADDR` | unset | Core mesh for playback/library/guard event subscription |
 | `MUXCORE_INSECURE_DISABLE_TLS` | unset | Dev-only: disable TLS for mesh + peer gRPC dials |
@@ -54,7 +54,7 @@ Proto: `proto/monitorv1/monitor.proto`
 ### Operator (requires `PLAYBACK_MONITOR_HTTP_TOKEN`)
 
 - Health: `GET /healthz` (DB ping; `503` when DB down)
-- Ingest: `POST /ingest`
+- Ingest: `POST /ingest` (loopback without token, or operator token)
 - Sessions/history: `GET /sessions/active`, `GET /history`
 - Stats/charts: `GET /stats/*`
 - Library: `GET /library/*`

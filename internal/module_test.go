@@ -2,10 +2,13 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -302,6 +305,97 @@ func TestItemWatchStatsAggregation(t *testing.T) {
 	if len(users) != 2 {
 		t.Fatalf("users %v", users)
 	}
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/item?item_id=movie-abc&runtime=60", nil)
+	rec := httptest.NewRecorder()
+	m.handleItemStatsHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("item http %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		PlayCount   int  `json:"play_count"`
+		UniqueUsers int  `json:"unique_users"`
+		HasActivity bool `json:"has_activity"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.PlayCount != 2 || body.UniqueUsers != 2 || !body.HasActivity {
+		t.Fatalf("item http body %#v", body)
+	}
+}
+
+func TestOperatorStopSession(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(ctx) })
+
+	ev := SessionEvent{
+		EventType:         "playback.started",
+		SourceModule:      "media-ui",
+		ServerType:        "native",
+		ServerID:          "muxcore-native",
+		ExternalSessionID: "web-1",
+		UserID:            "sam",
+		Title:             "Dune",
+		ItemID:            "m1",
+		MuxcoreID:         "m1",
+	}
+	id, _, err := m.ingestSessionEvent(ctx, ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := m.operatorStopSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.State != "stopped" || rec.ExternalSessionID != "web-1" {
+		t.Fatalf("%#v", rec)
+	}
+	active, err := m.listActiveSessions(ctx, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("active after kick %d", len(active))
+	}
+	ev.EventType = "playback.progress"
+	_, _, err = m.ingestSessionEvent(ctx, ev)
+	if !errors.Is(err, errSessionKicked) {
+		t.Fatalf("progress after kick: %v", err)
+	}
+	ev.EventType = "playback.started"
+	if _, _, err := m.ingestSessionEvent(ctx, ev); err != nil {
+		t.Fatalf("started after kick should reopen: %v", err)
+	}
+	active, err = m.listActiveSessions(ctx, "", 10)
+	if err != nil || len(active) != 1 {
+		t.Fatalf("reopen %d %v", len(active), err)
+	}
+
+	m.httpToken = "secret-token"
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/sessions/"+active[0].ID+"/stop", http.NoBody)
+	req.SetPathValue("id", active[0].ID)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	m.withOperatorAuth(m.handleStopSession)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("http stop %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Stopped bool `json:"stopped"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil || !body.Stopped {
+		t.Fatalf("body %s", w.Body.String())
+	}
 }
 
 func TestOperatorHTTPAuth(t *testing.T) {
@@ -330,6 +424,43 @@ func TestOperatorHTTPAuth(t *testing.T) {
 	m.withOperatorAuth(m.handleListActive)(auth, req)
 	if auth.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", auth.Code, auth.Body.String())
+	}
+}
+
+func TestIngestHTTPLoopbackAllowsWithoutToken(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{
+		DBPath:   filepath.Join(dir, "monitor.db"),
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+	})
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(ctx) })
+
+	req := httptest.NewRequest(http.MethodPost, "/ingest", strings.NewReader(`{
+		"EventType":"playback.started",
+		"ServerType":"native",
+		"ExternalSessionID":"web-1",
+		"UserID":"alice",
+		"ItemID":"m1",
+		"Title":"Dune"
+	}`))
+	req.RemoteAddr = "127.0.0.1:4321"
+	w := httptest.NewRecorder()
+	m.withIngestAuth(m.handleIngestHTTP)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("loopback ingest %d body=%s", w.Code, w.Body.String())
+	}
+
+	remote := httptest.NewRequest(http.MethodPost, "/ingest", strings.NewReader(`{"EventType":"playback.started","ItemID":"m2"}`))
+	remote.RemoteAddr = "203.0.113.9:4321"
+	denied := httptest.NewRecorder()
+	m.withIngestAuth(m.handleIngestHTTP)(denied, remote)
+	if denied.Code != http.StatusServiceUnavailable {
+		t.Fatalf("remote without token %d body=%s", denied.Code, denied.Body.String())
 	}
 }
 
