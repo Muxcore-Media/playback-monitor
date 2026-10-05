@@ -20,6 +20,7 @@ import (
 	eventsv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/events/v1"
 	"github.com/Muxcore-Media/core/sdk/go/client"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	"github.com/Muxcore-Media/core/sdk/go/module/meshtls"
 	manifest "github.com/Muxcore-Media/playback-monitor"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -152,7 +153,11 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	m.grpcSrv = grpc.NewServer()
+	srvOpt, err := meshtls.ServerOption()
+	if err != nil {
+		return fmt.Errorf("grpc mesh TLS: %w", err)
+	}
+	m.grpcSrv = grpc.NewServer(srvOpt)
 	monitorv1.RegisterPlaybackMonitorServiceServer(m.grpcSrv, m)
 	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)
 	go func() {

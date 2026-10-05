@@ -9,6 +9,7 @@ import (
 )
 
 func TestNewTestModuleHealthAndStart(t *testing.T) {
+	t.Setenv("MUXCORE_INSECURE_DISABLE_TLS", "true")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	m := integsupport.NewTestModule(t, integsupport.Config{})
