@@ -7,17 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/Muxcore-Media/core/sdk/go/module/netguard"
 	"github.com/google/uuid"
 )
-
-var destinationHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 type NotificationDestination struct {
 	CreatedAt time.Time
@@ -272,25 +269,25 @@ func validateDestinationConfig(destType string, config map[string]string) error 
 	}
 }
 
+// Notification webhook targets are user-supplied: https only, no
+// private/loopback/link-local/metadata targets (RULE-VAL-2). These are vars so
+// tests can point at loopback httptest servers.
+var (
+	webhookGuardOpts = netguard.Options{RequireHTTPS: true, Timeout: 15 * time.Second}
+	// The Apprise server is an admin-configured integration and is typically
+	// on the LAN or loopback; only metadata/link-local targets are blocked.
+	appriseGuardOpts = netguard.Options{AllowPrivate: true, AllowLoopback: true, Timeout: 15 * time.Second}
+
+	webhookValidate = func(raw string) error {
+		return netguard.ValidateURL(raw, netguard.UserURL, webhookGuardOpts)
+	}
+	webhookHTTPClient = netguard.NewClient(netguard.UserURL, webhookGuardOpts)
+	appriseHTTPClient = netguard.NewClient(netguard.Integration, appriseGuardOpts)
+)
+
 func assertSafeWebhookURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("invalid webhook_url")
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("webhook_url must be http or https")
-	}
-	if envTruthy(os.Getenv("PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS")) {
-		return nil
-	}
-	host := u.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return fmt.Errorf("webhook_url blocked")
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			return fmt.Errorf("webhook_url blocked")
-		}
+	if err := webhookValidate(strings.TrimSpace(raw)); err != nil {
+		return fmt.Errorf("webhook_url rejected: %w", err)
 	}
 	return nil
 }
@@ -423,6 +420,9 @@ func (m *Module) postAppriseURLs(ctx context.Context, urls, title, message, seve
 	if err != nil {
 		return err
 	}
+	if verr := netguard.ValidateURL(base, netguard.Integration, appriseGuardOpts); verr != nil {
+		return fmt.Errorf("apprise url rejected: %w", verr)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/notify", bytes.NewReader(payload)) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
@@ -433,7 +433,7 @@ func (m *Module) postAppriseURLs(ctx context.Context, urls, title, message, seve
 	} else if token := strings.TrimSpace(os.Getenv("APPRISE_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := destinationHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
+	resp, err := appriseHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
 	}
@@ -467,7 +467,7 @@ func (m *Module) postWebhookJSON(ctx context.Context, webhookURL string, payload
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := destinationHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
+	resp, err := webhookHTTPClient.Do(req) //nolint:gosec // destination base URL is operator-configured
 	if err != nil {
 		return err
 	}

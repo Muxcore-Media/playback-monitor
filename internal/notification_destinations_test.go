@@ -13,7 +13,7 @@ import (
 )
 
 func TestNotificationDestinationsCRUDAndDelivery(t *testing.T) {
-	t.Setenv("PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS", "1")
+	allowLocalWebhooks(t)
 	ctx := context.Background()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,12 +97,5 @@ func TestNotificationDestinationsCRUDAndDelivery(t *testing.T) {
 func TestAssertSafeWebhookURLBlocksLoopback(t *testing.T) {
 	if err := assertSafeWebhookURL("http://127.0.0.1/hook"); err == nil {
 		t.Fatal("expected loopback block")
-	}
-}
-
-func TestAssertSafeWebhookURLAllowsLocalWhenConfigured(t *testing.T) {
-	t.Setenv("PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS", "1")
-	if err := assertSafeWebhookURL("http://127.0.0.1/hook"); err != nil {
-		t.Fatalf("expected allow: %v", err)
 	}
 }

@@ -316,7 +316,7 @@ func fetchTautulliHistoryPage(ctx context.Context, baseURL, apiKey string, start
 	if err != nil {
 		return nil, 0, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := tautulliHTTPClient.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
