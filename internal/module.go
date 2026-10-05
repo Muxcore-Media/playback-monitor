@@ -20,12 +20,11 @@ import (
 	eventsv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/events/v1"
 	"github.com/Muxcore-Media/core/sdk/go/client"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	manifest "github.com/Muxcore-Media/playback-monitor"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
-
-const moduleVersion = "0.1.1"
 
 type Module struct {
 	monitorv1.UnimplementedPlaybackMonitorServiceServer
@@ -115,7 +114,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:          m.id,
 		Name:        "Playback Monitor",
-		Version:     moduleVersion,
+		Version:     modulesdk.ManifestVersion(manifest.ManifestJSON),
 		Roles:       []string{"analytics"},
 		Description: "Session history, live activity, and playback analytics (Tautulli / Tracearr core)",
 		Author:      "MuxCore",

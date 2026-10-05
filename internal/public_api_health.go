@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	manifest "github.com/Muxcore-Media/playback-monitor"
 )
 
 func (m *Module) handlePublicHealth(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +42,7 @@ func (m *Module) handlePublicHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
-		"version":   moduleVersion,
+		"version":   modulesdk.ManifestVersion(manifest.ManifestJSON),
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 		"servers":   out,
 	})
