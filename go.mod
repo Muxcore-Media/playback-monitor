@@ -5,10 +5,10 @@ go 1.26.6
 require (
 	github.com/Muxcore-Media/contracts-notification v0.1.2
 	github.com/Muxcore-Media/contracts-playback v0.2.0
-	github.com/Muxcore-Media/core v0.6.0
+	github.com/Muxcore-Media/core v0.6.12
 	github.com/Muxcore-Media/core/pkg/contracts v0.6.0
-	github.com/Muxcore-Media/core/sdk/go/client v0.6.0
-	github.com/Muxcore-Media/core/sdk/go/module v0.6.0
+	github.com/Muxcore-Media/core/sdk/go/client v0.6.1
+	github.com/Muxcore-Media/core/sdk/go/module v0.6.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/oschwald/geoip2-golang v1.11.0
