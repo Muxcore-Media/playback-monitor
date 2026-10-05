@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- Subscribe to `identity.user.deleted` and delete that account's sessions, server-user link, and identity when nothing else still uses it (NFR-DATA-003). Library rows stay.
+
 ## [0.1.6] - 2026-10-05
 
 

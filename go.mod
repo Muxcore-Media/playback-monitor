@@ -3,6 +3,7 @@ module github.com/Muxcore-Media/playback-monitor
 go 1.26.6
 
 require (
+	github.com/Muxcore-Media/contracts-media v0.1.2
 	github.com/Muxcore-Media/contracts-notification v0.1.2
 	github.com/Muxcore-Media/contracts-playback v0.2.0
 	github.com/Muxcore-Media/core v0.6.14

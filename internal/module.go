@@ -402,6 +402,7 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 	} else {
 		slog.Debug("playback-monitor: subscribe guard violations failed", "error", err)
 	}
+	m.subscribeUserDeleted(ctx, mc, &wg, &active)
 	if ch, cancel, err := mc.Events.Subscribe(ctx, EventRequestReady); err == nil {
 		active++
 		wg.Add(1)
