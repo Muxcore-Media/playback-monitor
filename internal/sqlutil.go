@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 )
@@ -33,11 +34,16 @@ func rebindSQL(d dbDialect, query string) string {
 	return b.String()
 }
 
+var errDBNotInitialized = errors.New("db not initialized")
+
 func (m *Module) exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	m.mu.RLock()
 	db := m.db
 	d := m.dbDialect
 	m.mu.RUnlock()
+	if db == nil {
+		return nil, errDBNotInitialized
+	}
 	return db.ExecContext(ctx, rebindSQL(d, query), args...)
 }
 
@@ -46,6 +52,9 @@ func (m *Module) queryRows(ctx context.Context, query string, args ...any) (*sql
 	db := m.db
 	d := m.dbDialect
 	m.mu.RUnlock()
+	if db == nil {
+		return nil, errDBNotInitialized
+	}
 	return db.QueryContext(ctx, rebindSQL(d, query), args...)
 }
 

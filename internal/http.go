@@ -70,17 +70,17 @@ func (m *Module) handleItemStatsHTTP(w http.ResponseWriter, r *http.Request) {
 		lastWatched = ws.LastWatchedAt.UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"item_id":                    itemID,
-		"play_count":                 ws.PlayCount,
-		"view_count":                 ws.ViewCount,
-		"unique_users":               ws.UniqueUsers,
-		"watch_minutes":              ws.TotalDurationMinutes,
-		"longest_minutes":            ws.LongestDurationMinutes,
-		"has_activity":               ws.HasActivity,
-		"never_watched":              ws.NeverWatched,
-		"days_since_last_watch":      ws.DaysSinceLastWatch,
-		"last_watched_at":            lastWatched,
-		"user_watched_percent":       ws.UserWatchedPercent,
+		"item_id":                       itemID,
+		"play_count":                    ws.PlayCount,
+		"view_count":                    ws.ViewCount,
+		"unique_users":                  ws.UniqueUsers,
+		"watch_minutes":                 ws.TotalDurationMinutes,
+		"longest_minutes":               ws.LongestDurationMinutes,
+		"has_activity":                  ws.HasActivity,
+		"never_watched":                 ws.NeverWatched,
+		"days_since_last_watch":         ws.DaysSinceLastWatch,
+		"last_watched_at":               lastWatched,
+		"user_watched_percent":          ws.UserWatchedPercent,
 		"user_watched_duration_minutes": ws.UserDurationMinutes,
 	})
 }

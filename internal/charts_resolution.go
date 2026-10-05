@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	playbackv1 "github.com/Muxcore-Media/playback-contract/proto/playbackv1"
+	playbackv1 "github.com/Muxcore-Media/contracts-playback/playbackv1"
 )
 
 func normalizeStreamResolution(height, width int, label string) string {

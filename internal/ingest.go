@@ -124,7 +124,9 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
 			if created {
-				go m.firePlaybackNotificationRules(context.Background(), playbackevents.EventPlaybackStarted, ev) //nolint:gosec // notification dispatch outlives ingest handler
+				m.goBackground(func(bctx context.Context) { //nolint:contextcheck // detached from request ctx; cancelled on Stop
+					m.firePlaybackNotificationRules(bctx, playbackevents.EventPlaybackStarted, ev)
+				})
 			}
 		}
 		return id, created, err
@@ -138,7 +140,7 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 		id, created, err := m.stopSession(ctx, db, ev, serverID, externalID, nowStr)
 		if err == nil {
 			_ = m.upsertLibraryItem(ctx, serverID, ev)
-			go m.notifySessionStop(context.Background(), ev) //nolint:gosec // notification dispatch outlives ingest handler
+			m.goBackground(func(bctx context.Context) { m.notifySessionStop(bctx, ev) }) //nolint:contextcheck // detached from request ctx; cancelled on Stop
 		}
 		return id, created, err
 	default:
