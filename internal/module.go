@@ -49,8 +49,10 @@ type Module struct {
 	activeSessionTimeout time.Duration
 	cfgMu                sync.RWMutex
 	mu                   sync.RWMutex
+	bg                   sync.WaitGroup // in-flight fire-and-forget goroutines (notifications)
 	notifyOnSessionStart bool
 	notifyOnSessionStop  bool
+	bgStopped            bool
 	geoIPEnabled         bool
 }
 
@@ -263,6 +265,14 @@ func (m *Module) Stop(ctx context.Context) error {
 	if m.httpLis != nil {
 		_ = m.httpLis.Close()
 	}
+	// Stop accepting background work, cancel in-flight work and wait for it to
+	// drain before the database is closed; otherwise those goroutines race with
+	// teardown and hit a nil/closed DB.
+	m.mu.Lock()
+	m.bgStopped = true
+	m.mu.Unlock()
+	m.bg.Wait()
+
 	m.mu.Lock()
 	mc := m.mc
 	if m.db != nil {
@@ -448,4 +458,30 @@ func (m *Module) eventClient() *client.Client {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.mc
+}
+
+// goBackground runs fn in a tracked goroutine whose context is cancelled when
+// Stop begins (stopCh closes). Stop waits for all tracked goroutines before
+// closing the database. After Stop has begun, new work is dropped.
+func (m *Module) goBackground(fn func(ctx context.Context)) {
+	m.mu.Lock()
+	if m.bgStopped {
+		m.mu.Unlock()
+		return
+	}
+	m.bg.Add(1)
+	m.mu.Unlock()
+	go func() {
+		defer m.bg.Done()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-m.stopCh:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		fn(ctx)
+	}()
 }
