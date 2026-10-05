@@ -8,7 +8,7 @@ require (
 	github.com/Muxcore-Media/core v0.6.14
 	github.com/Muxcore-Media/core/pkg/contracts v0.6.0
 	github.com/Muxcore-Media/core/sdk/go/client v0.6.1
-	github.com/Muxcore-Media/core/sdk/go/module v0.6.5
+	github.com/Muxcore-Media/core/sdk/go/module v0.6.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/oschwald/geoip2-golang v1.11.0

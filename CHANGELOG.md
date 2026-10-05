@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.6] - 2026-10-05
+
+
+### Security
+- NFR-SEC-009 / RULE-VAL-2: notification destination webhooks (discord/slack/webhook) must be https and may not target private, loopback, link-local or metadata addresses (netguard `UserURL`; checked at configure time and at dial/redirect time, which also closes DNS-rebinding). The `PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS` bypass is removed. The Apprise base URL and the Tautulli import URL are admin-configured integrations: netguard `Integration` with LAN and loopback allowed, metadata/link-local blocked, via guarded clients (Tautulli no longer uses `http.DefaultClient`). Built on sdk/go/module v0.6.6.
+
 ## [0.1.5] - 2026-10-05
 
 

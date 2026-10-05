@@ -27,7 +27,7 @@ func TestIsAllowedNotificationEventTypeRequestReady(t *testing.T) {
 }
 
 func TestRequestReadyDestinationAndRuleAccepted(t *testing.T) {
-	t.Setenv("PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS", "1")
+	allowLocalWebhooks(t)
 	ctx := context.Background()
 	m := newTestMonitor(t)
 
@@ -83,7 +83,7 @@ func TestRequestReadyDestinationAndRuleAccepted(t *testing.T) {
 }
 
 func TestRequestReadyDispatchAndDedupe(t *testing.T) {
-	t.Setenv("PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS", "1")
+	allowLocalWebhooks(t)
 	ctx := context.Background()
 	var hits atomic.Int32
 	var lastBody atomic.Value

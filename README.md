@@ -41,7 +41,6 @@ Durable operator settings (notify flags, geoip, public API key, retention) persi
 |-----|---------|-------|
 | `PLAYBACK_MONITOR_NOTIFY_ON_START` | `0` | Legacy notify on session start |
 | `PLAYBACK_MONITOR_NOTIFY_ON_STOP` | `0` | Legacy notify on session stop |
-| `PLAYBACK_MONITOR_ALLOW_LOCAL_WEBHOOKS` | `0` | Allow notification destination webhooks to `127.0.0.1` / RFC1918 hosts |
 
 ## gRPC (`PlaybackMonitorService`)
 
