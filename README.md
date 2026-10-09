@@ -74,6 +74,22 @@ Admin playback UI proxies operator HTTP via authenticated routes:
 - `/streams/guard`, `/streams/notifications`
 - `/streams/events` — SSE (admin session auth)
 
+## User erasure (ADR-0035)
+
+playback-monitor is a personal-data owner (session IP, device and geo, `server_users`, `user_identities`). When the identity provider deletes a user it records a tombstone in its erasure ledger; this module reads that ledger (never an event or request) and erases the user's data.
+
+| Var | Default | Notes |
+|-----|---------|-------|
+| `ERASURE_SWEEP_INTERVAL` | `5m` | Go duration between ledger sweeps (clamped to 30s..24h; a sweep also runs at startup). An unparsable value logs an error and uses the default. |
+
+The reconciler starts after the first core connection (`MUXCORE_GRPC_ADDR`), discovers the `identity` provider through core, and refuses any provider whose verified certificate CN is not the provider's module id. Without a core connection nothing is erased.
+
+Disposition for a tombstone with user id `U`, in **one** transaction that also records `erasure_applied`:
+
+- **Deleted:** the `server_users` row `(muxcore-native, U)`; the identity it points to; every session of that identity (an operator merge asserted it is the same person); the identity's other `server_users` links (accounts merged into it); and `muxcore-native` sessions with `user_id = U`.
+- **Retained:** media-server accounts that were not merged with that identity (different id space; use `DeleteUserHistory` or a merge). A same-string `external_user_id` on another server is never matched.
+- After the record exists, native events for `U` are refused (gRPC `PermissionDenied`, HTTP `403`) on every ingest path, across restarts.
+
 ## Mesh events consumed
 
 - `playback.started`, `playback.progress`, `playback.stopped`

@@ -84,6 +84,11 @@ func (m *Module) applySchema(ctx context.Context) error {
 			}
 		}
 	}
+	// Not part of the tolerant loop above: a missing erasure_applied table
+	// must stop startup, not silently disable the erasure guard (ADR-0035).
+	if err := m.ensureErasureSchema(ctx); err != nil {
+		return err
+	}
 	if err := m.ensureDefaultServer(ctx); err != nil {
 		return err
 	}

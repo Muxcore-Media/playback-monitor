@@ -20,6 +20,7 @@ import (
 	eventsv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/events/v1"
 	"github.com/Muxcore-Media/core/sdk/go/client"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	"github.com/Muxcore-Media/core/sdk/go/module/erasure"
 	"github.com/Muxcore-Media/core/sdk/go/module/meshtls"
 	manifest "github.com/Muxcore-Media/playback-monitor"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
@@ -36,6 +37,10 @@ type Module struct {
 	stopCh               chan struct{}
 	mc                   *client.Client
 	grpcSrv              *grpc.Server
+	erasureRec           *erasure.Reconciler
+	erasureCancel        context.CancelFunc
+	erasureDone          chan struct{}
+	erasureHook          func(stage string) error // tests only: fails an erasure mid-transaction
 	httpAddr             string
 	grpcAddr             string
 	dbPath               string
@@ -48,11 +53,13 @@ type Module struct {
 	historyRetentionDays int
 	activeSessionTimeout time.Duration
 	cfgMu                sync.RWMutex
+	erasureMu            sync.RWMutex // ingest holds it shared, an erasure transaction exclusive
 	mu                   sync.RWMutex
 	bg                   sync.WaitGroup // in-flight fire-and-forget goroutines (notifications)
 	notifyOnSessionStart bool
 	notifyOnSessionStop  bool
 	bgStopped            bool
+	erasureStarted       bool
 	geoIPEnabled         bool
 }
 
@@ -276,6 +283,8 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.bgStopped = true
 	m.mu.Unlock()
 	m.bg.Wait()
+	// The reconciler writes to the database: wait for it before closing it.
+	m.stopErasureReconciler()
 
 	m.mu.Lock()
 	mc := m.mc
@@ -337,6 +346,10 @@ func (m *Module) connectCoreAndSubscribe(ctx context.Context) {
 		m.mu.Unlock()
 		slog.Info("playback-monitor: connected to core mesh", "addr", addr)
 		backoff = time.Second
+		// ADR-0035: the erasure reconciler starts once the core connection
+		// exists (it discovers the identity provider through it) and stops in
+		// Stop. It outlives event-subscription reconnects.
+		m.startErasureReconciler(ctx)
 		m.runMeshSubscriptions(ctx)
 		select {
 		case <-m.stopCh:
@@ -372,7 +385,7 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 			defer wg.Done()
 			defer cancel()
 			for evt := range events {
-				m.handlePlaybackEvent(ctx, eventType, evt)
+				m.trackedWork(func() { m.handlePlaybackEvent(ctx, eventType, evt) })
 			}
 		}(ch, et, cancel)
 	}
@@ -383,7 +396,7 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 			defer wg.Done()
 			defer cancel()
 			for evt := range events {
-				m.handleLibraryItemEvent(ctx, evt)
+				m.trackedWork(func() { m.handleLibraryItemEvent(ctx, evt) })
 			}
 		}(ch, cancel)
 	} else {
@@ -396,7 +409,7 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 			defer wg.Done()
 			defer cancel()
 			for evt := range events {
-				m.handleGuardViolationEvent(ctx, evt)
+				m.trackedWork(func() { m.handleGuardViolationEvent(ctx, evt) })
 			}
 		}(ch, cancel)
 	} else {
@@ -409,7 +422,7 @@ func (m *Module) runMeshSubscriptions(ctx context.Context) {
 			defer wg.Done()
 			defer cancel()
 			for evt := range events {
-				m.handleRequestReadyEvent(ctx, evt)
+				m.trackedWork(func() { m.handleRequestReadyEvent(ctx, evt) })
 			}
 		}(ch, cancel)
 	} else {
@@ -462,6 +475,21 @@ func (m *Module) eventClient() *client.Client {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.mc
+}
+
+// trackedWork runs fn synchronously as work Stop waits for before it closes
+// the database: an event handler that is mid-ingest when Stop begins finishes
+// first, and events that arrive after Stop has begun are dropped.
+func (m *Module) trackedWork(fn func()) {
+	m.mu.Lock()
+	if m.bgStopped {
+		m.mu.Unlock()
+		return
+	}
+	m.bg.Add(1)
+	m.mu.Unlock()
+	defer m.bg.Done()
+	fn()
 }
 
 // goBackground runs fn in a tracked goroutine whose context is cancelled when
