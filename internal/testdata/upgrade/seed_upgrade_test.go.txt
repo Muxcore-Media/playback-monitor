@@ -1,0 +1,88 @@
+//go:build upgradeseed
+
+package internal
+
+import (
+	"context"
+	"database/sql"
+	"os"
+	"strings"
+	"testing"
+)
+
+// TestUpgradeSeed creates a database at $UPGRADE_SEED_DB with the module's own
+// Init and ingest/merge code (the schema and rows of the checked-out tag) and
+// writes the equivalent of `sqlite3 <db> .schema` to $UPGRADE_SEED_SCHEMA.
+// It stands in for scripts/upgrade-fixtures/snapshot.sh where the sqlite3 CLI
+// is not installed. See README.md in this directory.
+func TestUpgradeSeed(t *testing.T) {
+	path := os.Getenv("UPGRADE_SEED_DB")
+	if path == "" {
+		t.Skip("UPGRADE_SEED_DB not set")
+	}
+	ctx := context.Background()
+	m := NewModule(Config{DBPath: path, GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	native := func(user, name, ext, typ string) SessionEvent {
+		return SessionEvent{
+			EventType: typ, SourceModule: "media-ui", ServerType: "native", ServerID: "muxcore-native",
+			ExternalSessionID: "native:default:" + user + ":" + ext, UserID: user, UserName: name,
+			ItemID: "item-" + ext, MuxcoreID: "mc-" + ext, Title: "Title " + ext,
+			IPAddress: "10.1.2.3", Device: "Pixel 9", Player: "media-ui", Platform: "Android",
+			GeoCountry: "NL", GeoCity: "Amsterdam", PositionSeconds: 600, DurationSeconds: 7200,
+		}
+	}
+	server := func(serverID, user, name, ext string) SessionEvent {
+		return SessionEvent{
+			EventType: "playback.started", SourceModule: serverID, ServerType: "jellyfin", ServerID: serverID,
+			ExternalSessionID: serverID + ":" + ext, UserID: user, UserName: name,
+			ItemID: "item-" + ext, Title: "Title " + ext, IPAddress: "192.168.0.9", Device: "Living room TV",
+		}
+	}
+	ingest := func(ev SessionEvent) {
+		if _, _, err := m.ingestSessionEvent(ctx, ev); err != nil {
+			t.Fatalf("seed ingest %s/%s: %v", ev.ServerID, ev.UserID, err)
+		}
+	}
+	ingest(native("u-victim", "Victoria", "s1", "playback.started"))
+	ingest(native("u-victim", "Victoria", "s2", "playback.stopped"))
+	ingest(native("u-bystander", "Barry", "s1", "playback.started"))
+	ingest(server("jellyfin-main", "jf-victim", "vicky", "a"))
+	if _, err := m.mergeUserIdentities(ctx, "jf-victim", "vicky", "u-victim", "Victoria"); err != nil {
+		t.Fatal(err)
+	}
+	ingest(server("jellyfin-other", "u-victim", "Somebody Else", "c"))
+	ingest(server("jellyfin-main", "jf-solo", "Solo", "d"))
+	_ = m.Stop(ctx)
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	for _, stmt := range []string{`PRAGMA wal_checkpoint(TRUNCATE)`, `PRAGMA journal_mode=DELETE`, `PRAGMA page_size=1024`, `VACUUM`} {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	if out := os.Getenv("UPGRADE_SEED_SCHEMA"); out != "" {
+		rows, err := db.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rows.Close() }()
+		var b strings.Builder
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				t.Fatal(err)
+			}
+			b.WriteString(s + ";\n")
+		}
+		if err := os.WriteFile(out, []byte(b.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

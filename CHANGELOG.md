@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- ADR-0035 user erasure (T-M4-07 slice E5): an `erasure.Reconciler` (core v0.6.17 / sdk/go/module v0.6.7) applies the identity provider's erasure ledger in one transaction and records it in the new `erasure_applied` table (forward-only, idempotent migration). Deletes the `muxcore-native` account, its identity, the identity's sessions and other links; external media-server accounts that are not merged are retained. Native events for an erased user id are refused. `ERASURE_SWEEP_INTERVAL` sets the sweep interval.
+
 ## [0.1.6] - 2026-10-05
 
 

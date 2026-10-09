@@ -107,6 +107,14 @@ func (m *Module) ingestSessionEvent(ctx context.Context, ev SessionEvent) (sessi
 	if db == nil {
 		return "", false, fmt.Errorf("db not initialized")
 	}
+	// ADR-0035: an erased native user's sessions are refused before anything
+	// (server, identity, session) is created. The read lock orders this check
+	// and the writes below against an in-flight erasure transaction.
+	m.erasureMu.RLock()
+	defer m.erasureMu.RUnlock()
+	if erasedErr := m.refuseErased(ctx, serverID, ev.UserID); erasedErr != nil {
+		return "", false, erasedErr
+	}
 	if regErr := m.ensureServerRegistered(ctx, db, serverID, serverType, ev.SourceModule); regErr != nil {
 		return "", false, regErr
 	}

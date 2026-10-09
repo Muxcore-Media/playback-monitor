@@ -3,9 +3,13 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
 	monitorv1 "github.com/Muxcore-Media/playback-monitor/proto/monitorv1"
@@ -14,6 +18,9 @@ import (
 func (m *Module) IngestSessionEvent(ctx context.Context, req *monitorv1.IngestSessionEventRequest) (*monitorv1.IngestSessionEventResponse, error) {
 	ev := sessionEventFromProto(req.GetEvent())
 	id, created, err := m.ingestSessionEvent(ctx, ev)
+	if errors.Is(err, errUserErased) {
+		return nil, status.Error(codes.PermissionDenied, errUserErased.Error())
+	}
 	if err != nil {
 		return nil, err
 	}

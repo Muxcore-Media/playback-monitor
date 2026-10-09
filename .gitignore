@@ -1,3 +1,4 @@
 *.db
+!internal/testdata/upgrade/*.db
 playback-monitor
 bin/

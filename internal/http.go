@@ -317,6 +317,10 @@ func (m *Module) handleIngestHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "created": false, "stopped": true})
 		return
 	}
+	if errors.Is(err, errUserErased) {
+		http.Error(w, errUserErased.Error(), http.StatusForbidden)
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
