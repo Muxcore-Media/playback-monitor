@@ -216,6 +216,13 @@ func (m *Module) insertImportedSession(ctx context.Context, externalID string, e
 	stopStr := stoppedAt.UTC().Format(time.RFC3339)
 	geoCountry, geoCity, geoLat, geoLon := geoInsertValues(ev)
 
+	// ADR-0035: imports never write rows for an erased native user.
+	m.erasureMu.RLock()
+	defer m.erasureMu.RUnlock()
+	if err := m.refuseErased(ctx, strings.TrimSpace(ev.ServerID), ev.UserID); err != nil {
+		return err
+	}
+
 	id := uuid.NewString()
 	_, err := m.exec(ctx, `
 		INSERT INTO sessions(

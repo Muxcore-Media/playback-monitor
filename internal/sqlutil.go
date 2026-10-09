@@ -73,6 +73,13 @@ func (m *Module) txExec(ctx context.Context, tx *sql.Tx, query string, args ...a
 	return tx.ExecContext(ctx, rebindSQL(d, query), args...)
 }
 
+func (m *Module) txQueryRow(ctx context.Context, tx *sql.Tx, query string, args ...any) *sql.Row {
+	m.mu.RLock()
+	d := m.dbDialect
+	m.mu.RUnlock()
+	return tx.QueryRowContext(ctx, rebindSQL(d, query), args...)
+}
+
 func (m *Module) txQueryRows(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
 	m.mu.RLock()
 	d := m.dbDialect
