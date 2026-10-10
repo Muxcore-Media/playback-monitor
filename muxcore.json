@@ -1,7 +1,7 @@
 {
   "name": "Playback Monitor",
   "description": "Session history, live activity, and playback analytics (Tautulli / Tracearr core)",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "author": "MuxCore",
   "roles": [
     "analytics"
