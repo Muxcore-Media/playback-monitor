@@ -37,6 +37,12 @@ func countUpgradeRows(t *testing.T, m *Module, table string) int {
 // ADR-0035 table.
 func TestUpgradeFromSnapshots(t *testing.T) {
 	clearErasureEnv(t)
+	// The fixtures' last_progress_at values are fixed past timestamps, and
+	// listActiveSessions expires sessions older than the active timeout
+	// against the wall clock. Pin a timeout (100 years) far longer than any
+	// fixture's age so the active-session assertions do not depend on when
+	// the test runs.
+	t.Setenv("PLAYBACK_MONITOR_ACTIVE_TIMEOUT", "876000h")
 	for _, tag := range upgradeSnapshots {
 		t.Run(tag, func(t *testing.T) {
 			fresh := openUpgradeModule(t, filepath.Join(t.TempDir(), "fresh.db"))
