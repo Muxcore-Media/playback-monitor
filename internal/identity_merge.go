@@ -63,8 +63,8 @@ func (m *Module) mergeUserIdentities(ctx context.Context, sourceID, sourceName, 
 	if sourceIdentity == "" {
 		return 0, fmt.Errorf("source identity not found")
 	}
-	if err := m.refuseErasedMergeIdentities(ctx, sourceIdentity, targetIdentity, sourceID, sourceName); err != nil {
-		return 0, err
+	if erasureErr := m.refuseErasedMergeIdentities(ctx, sourceIdentity, targetIdentity, sourceID, sourceName); erasureErr != nil {
+		return 0, erasureErr
 	}
 	if targetIdentity == "" {
 		targetIdentity, err = m.ensureUserIdentity(ctx, db, "default", targetID, targetName)
