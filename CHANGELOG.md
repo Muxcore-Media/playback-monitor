@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-11
+
 ### Fixed
 - Identity merges refuse erased endpoints and aliases linked to an erased native account, including tombstones whose local application failed. Merge lookups and writes are ordered with erasure and ingest so a merge cannot recreate an already-erased user's playback rows.
 
