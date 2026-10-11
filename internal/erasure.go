@@ -129,8 +129,8 @@ func (o erasureOwner) Apply(ctx context.Context, t erasure.Tombstone) (erasure.C
 	if db == nil {
 		return nil, errDBNotInitialized
 	}
-	// Exclude ingest for the whole transaction so a session cannot be written
-	// for the user between the identity lookup and the commit.
+	// Exclude ingest and merges for the whole transaction so a session cannot
+	// be written or relinked between the identity lookup and the commit.
 	m.erasureMu.Lock()
 	defer m.erasureMu.Unlock()
 
@@ -310,7 +310,7 @@ func countsFromJSON(raw string) erasure.Counts {
 }
 
 // refuseErased returns errUserErased for a native session of an erased user.
-// It must be called with erasureMu held for reading.
+// It must be called with erasureMu held for reading or writing.
 //
 // The durable erasure_applied record is the source of truth (it survives
 // restarts). The reconciler's last-seen ledger additionally covers the window

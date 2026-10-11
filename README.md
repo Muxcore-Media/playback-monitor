@@ -90,6 +90,8 @@ Disposition for a tombstone with user id `U`, in **one** transaction that also r
 - **Retained:** media-server accounts that were not merged with that identity (different id space; use `DeleteUserHistory` or a merge). A same-string `external_user_id` on another server is never matched.
 - After the record exists, native events for `U` are refused (gRPC `PermissionDenied`, HTTP `403`) on every ingest path, across restarts.
 
+Identity merges also refuse erased endpoints and aliases linked to a native account in the last-seen ledger, even if applying that tombstone failed. A refused merge returns gRPC `PermissionDenied` and changes no rows. Merges run in order with ingest and erasure, from identity lookup through commit. The legacy merge RPC accepts bare user IDs without a server namespace, so it also refuses an endpoint whose ID matches an erased native ID on another server; that external account's retained history and ingest are unaffected.
+
 ## Mesh events consumed
 
 - `playback.started`, `playback.progress`, `playback.stopped`

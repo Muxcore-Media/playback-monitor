@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"errors"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +13,42 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// Confirm that the merge goroutine reached the contested mutex before a
+// competing writer is released. A goroutine merely being launched does not
+// establish overlap, especially on a busy CI runner.
+func waitForMergeLock(t *testing.T, ctx context.Context, done <-chan error) {
+	t.Helper()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	stack := make([]byte, 256<<10)
+	for {
+		n := runtime.Stack(stack, true)
+		for _, goroutine := range strings.Split(string(stack[:n]), "\n\n") {
+			if strings.Contains(goroutine, "(*Module).mergeUserIdentities(") && strings.Contains(goroutine, "sync.(*RWMutex).Lock(") {
+				return
+			}
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("merge completed before waiting for the erasure lock: %v", err)
+		case <-ctx.Done():
+			t.Fatal("merge did not wait for the erasure lock: ", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func awaitErasureWork(t *testing.T, ctx context.Context, done <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		t.Fatal("erasure or merge did not finish: ", ctx.Err())
+		return ctx.Err()
+	}
+}
 
 // An acknowledged tombstone will be skipped on future sweeps. Merge must
 // therefore refuse both erased endpoints before recreating any personal rows.
@@ -52,11 +90,16 @@ func TestErasureMergeRefusesAppliedEndpoint(t *testing.T) {
 // ledger. Both native endpoints and external aliases linked to that person's
 // identity must be refused, without depending on the applied record.
 func TestErasureMergeRefusesLastSeenEndpointsAndAliases(t *testing.T) {
-	for _, tc := range []struct{ name, source, target string }{
-		{"native_source", "victim", "bystander"},
-		{"native_target", "bystander", "victim"},
-		{"linked_source", "external-victim", "bystander"},
-		{"linked_target", "bystander", "external-victim"},
+	for _, tc := range []struct {
+		name, source, target string
+		legacySessionOnly    bool
+	}{
+		{"native_source", "victim", "bystander", false},
+		{"native_target", "bystander", "victim", false},
+		{"linked_source", "external-victim", "bystander", false},
+		{"linked_target", "bystander", "external-victim", false},
+		{"legacy_source", "external-victim", "bystander", true},
+		{"legacy_target", "bystander", "external-victim", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clearErasureEnv(t)
@@ -67,6 +110,11 @@ func TestErasureMergeRefusesLastSeenEndpointsAndAliases(t *testing.T) {
 			mustIngest(t, m, serverEvent("jellyfin", "external-victim", "External", "three"))
 			if _, err := m.mergeUserIdentities(context.Background(), "external-victim", "External", "victim", "Victim"); err != nil {
 				t.Fatal(err)
+			}
+			if tc.legacySessionOnly {
+				if _, err := m.exec(context.Background(), `DELETE FROM server_users WHERE server_id = ? AND external_user_id = ?`, nativeServerID, "victim"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			h.provider.AddErasure("victim", "")
 			r := h.reconciler(t)
@@ -101,28 +149,27 @@ func TestErasureMergeWaitsForIngest(t *testing.T) {
 	mustIngest(t, m, nativeEvent("source", "Source", "one"))
 	mustIngest(t, m, nativeEvent("target", "Target", "two"))
 	before := snapshotState(t, m)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	m.erasureMu.RLock()
+	locked := true
+	defer func() {
+		if locked {
+			m.erasureMu.RUnlock()
+		}
+	}()
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.mergeUserIdentities(context.Background(), "source", "Source", "target", "Target")
+		_, err := m.mergeUserIdentities(ctx, "source", "Source", "target", "Target")
 		done <- err
 	}()
-	select {
-	case err := <-done:
-		m.erasureMu.RUnlock()
-		t.Fatalf("merge completed during ingest's read lock: %v", err)
-	case <-time.After(100 * time.Millisecond):
-	}
+	waitForMergeLock(t, ctx, done)
 	// Read-only queries remain available while the merge waits for the lock.
 	requireErased(t, before, snapshotState(t, m), nil, nil, nil)
 	m.erasureMu.RUnlock()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("merge did not finish after ingest released its lock")
+	locked = false
+	if err := awaitErasureWork(t, ctx, done); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -161,11 +208,12 @@ func TestErasureMergeQueuedDuringApplyCannotResurrect(t *testing.T) {
 		_, err := m.mergeUserIdentities(ctx, "bystander", "Bystander", "victim", "Victim")
 		merged <- err
 	}()
+	waitForMergeLock(t, ctx, merged)
 	close(release)
-	if err := <-applied; err != nil {
+	if err := awaitErasureWork(t, ctx, applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-merged; !errors.Is(err, errUserErased) {
+	if err := awaitErasureWork(t, ctx, merged); !errors.Is(err, errUserErased) {
 		t.Errorf("queued merge: %v, want errUserErased", err)
 	}
 	remaining, err := m.ErasureOwner().(erasure.Verifier).Verify(ctx, erasure.Tombstone{UserID: "victim"})
@@ -175,5 +223,150 @@ func TestErasureMergeQueuedDuringApplyCannotResurrect(t *testing.T) {
 	var survivors int
 	if err := m.queryRow(ctx, `SELECT COUNT(1) FROM sessions WHERE user_id = 'bystander' AND user_name = 'Bystander'`).Scan(&survivors); err != nil || survivors != 1 {
 		t.Errorf("bystander rows = %d, %v", survivors, err)
+	}
+}
+
+// Hold the sole SQLite connection to pause a merge after it has acquired the
+// erasure lock. An erasure arriving then must see the completed merge, so it
+// deletes the whole linked identity while preserving unrelated accounts.
+func TestErasureMergeInFlightCompletesBeforeApply(t *testing.T) {
+	clearErasureEnv(t)
+	m := newErasureModule(t, "")
+	mustIngest(t, m, nativeEvent("victim", "Victim", "one"))
+	mustIngest(t, m, serverEvent("jellyfin", "external-victim", "External", "two"))
+	bystander := mustIngest(t, m, nativeEvent("bystander", "Bystander", "three"))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := m.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	merged := make(chan error, 1)
+	go func() {
+		_, mergeErr := m.mergeUserIdentities(ctx, "external-victim", "External", "victim", "Victim")
+		merged <- mergeErr
+	}()
+	for m.erasureMu.TryRLock() {
+		m.erasureMu.RUnlock()
+		select {
+		case <-ctx.Done():
+			t.Fatal("merge did not acquire the erasure lock")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	applied := make(chan error, 1)
+	go func() {
+		_, applyErr := m.ErasureOwner().Apply(ctx, erasure.Tombstone{ErasureID: "er-victim", UserID: "victim"})
+		applied <- applyErr
+	}()
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitErasureWork(t, ctx, merged); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitErasureWork(t, ctx, applied); err != nil {
+		t.Fatal(err)
+	}
+	after := snapshotState(t, m)
+	if len(after.sessions) != 1 || after.sessions[bystander] == "" || len(after.links) != 1 || len(after.identities) != 1 {
+		t.Errorf("expected only the bystander after merge then erasure: %+v", after)
+	}
+}
+
+func TestErasureMergeAmbiguousExternalIDRefusedButIngestAllowed(t *testing.T) {
+	clearErasureEnv(t)
+	m := newErasureModule(t, "")
+	h := newErasureHarness(t, m)
+	mustIngest(t, m, nativeEvent("victim", "Victim", "one"))
+	mustIngest(t, m, serverEvent("jellyfin", "victim", "External", "two"))
+	mustIngest(t, m, serverEvent("jellyfin", "other", "Other", "three"))
+	h.provider.AddErasure("victim", "")
+	mustSweep(t, h.reconciler(t))
+	before := snapshotState(t, m)
+	for _, pair := range [][2]string{{"victim", "other"}, {"other", "victim"}} {
+		if _, err := m.mergeUserIdentities(context.Background(), pair[0], "", pair[1], ""); !errors.Is(err, errUserErased) {
+			t.Errorf("ambiguous bare-id merge %v: %v", pair, err)
+		}
+	}
+	requireErased(t, before, snapshotState(t, m), nil, nil, nil)
+	mustIngest(t, m, serverEvent("jellyfin", "victim", "External", "later"))
+	if _, err := m.mergeUserIdentities(context.Background(), "other", "Other", "new-external", "New"); err != nil {
+		t.Fatalf("ordinary external merge after erasure: %v", err)
+	}
+}
+
+// The legacy merge UPDATE also selects sessions whose user_id matches the
+// source, even when lookupIdentityForUser resolved another server's identity.
+// Refuse a native victim reached through those additional rows as well.
+func TestErasureMergeChecksAllIdentitiesMatchedBySource(t *testing.T) {
+	clearErasureEnv(t)
+	m := newErasureModule(t, "")
+	h := newErasureHarness(t, m)
+	ctx := context.Background()
+	mustIngest(t, m, nativeEvent("victim", "Victim", "one"))
+	mustIngest(t, m, serverEvent("jellyfin-one", "alias", "Alias", "two"))
+	if _, err := m.mergeUserIdentities(ctx, "victim", "Victim", "alias", "Alias"); err != nil {
+		t.Fatal(err)
+	}
+	mustIngest(t, m, serverEvent("jellyfin-two", "alias", "Unrelated alias", "three"))
+	// Make the newer external identity the deterministic legacy lookup result.
+	if _, err := m.exec(ctx, `UPDATE server_users SET last_seen_at = '2099-01-01T00:00:00Z' WHERE server_id = 'jellyfin-two'`); err != nil {
+		t.Fatal(err)
+	}
+	h.provider.AddErasure("victim", "")
+	r := h.reconciler(t)
+	m.mu.Lock()
+	m.erasureRec = r
+	m.mu.Unlock()
+	m.erasureHook = func(string) error { return errors.New("injected apply failure") }
+	if result, err := sweepOnce(t, r); err == nil || result.Failed != 1 {
+		t.Fatalf("failed application = %+v, %v", result, err)
+	}
+	m.erasureHook = nil
+	before := snapshotState(t, m)
+	if _, err := m.mergeUserIdentities(ctx, "alias", "Alias", "new-target", "New"); !errors.Is(err, errUserErased) {
+		t.Errorf("merge of additional matched identity: %v", err)
+	}
+	requireErased(t, before, snapshotState(t, m), nil, nil, nil)
+	if result := mustSweep(t, r); result.Applied != 1 {
+		t.Fatalf("retry = %+v", result)
+	}
+	var survivors int
+	if err := m.queryRow(ctx, `SELECT COUNT(1) FROM sessions WHERE server_id = 'jellyfin-two' AND user_id = 'alias'`).Scan(&survivors); err != nil || survivors != 1 {
+		t.Errorf("unrelated external alias rows = %d, %v", survivors, err)
+	}
+}
+
+func TestErasureMergeMissingTargetDoesNotMatchUnrelatedLegacySession(t *testing.T) {
+	clearErasureEnv(t)
+	m := newErasureModule(t, "")
+	h := newErasureHarness(t, m)
+	ctx := context.Background()
+	victim := mustIngest(t, m, nativeEvent("victim", "Victim", "one"))
+	mustIngest(t, m, serverEvent("jellyfin", "source", "Source", "two"))
+	if _, err := m.exec(ctx, `UPDATE sessions SET identity_id = '' WHERE id = ?`, victim); err != nil {
+		t.Fatal(err)
+	}
+	h.provider.AddErasure("victim", "")
+	r := h.reconciler(t)
+	m.mu.Lock()
+	m.erasureRec = r
+	m.mu.Unlock()
+	m.erasureHook = func(string) error { return errors.New("injected apply failure") }
+	if result, err := sweepOnce(t, r); err == nil || result.Failed != 1 {
+		t.Fatalf("failed application = %+v, %v", result, err)
+	}
+	m.erasureHook = nil
+	before := snapshotState(t, m)
+	if _, err := m.mergeUserIdentities(ctx, "source", "Source", "new-target", "New"); err != nil {
+		t.Fatalf("unrelated merge to a missing target: %v", err)
+	}
+	if after := snapshotState(t, m); after.sessions[victim] != before.sessions[victim] {
+		t.Error("unrelated legacy session changed")
+	}
+	if result := mustSweep(t, r); result.Applied != 1 {
+		t.Fatalf("retry = %+v", result)
 	}
 }
