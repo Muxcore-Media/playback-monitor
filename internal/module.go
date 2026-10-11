@@ -53,7 +53,7 @@ type Module struct {
 	historyRetentionDays int
 	activeSessionTimeout time.Duration
 	cfgMu                sync.RWMutex
-	erasureMu            sync.RWMutex // ingest holds it shared, an erasure transaction exclusive
+	erasureMu            sync.RWMutex // ingest holds it shared; erasure and identity merges exclusive
 	mu                   sync.RWMutex
 	bg                   sync.WaitGroup // in-flight fire-and-forget goroutines (notifications)
 	notifyOnSessionStart bool
